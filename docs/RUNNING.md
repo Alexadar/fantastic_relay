@@ -8,7 +8,7 @@ self-hosted path.
 ## 1. Run the router
 
 ```sh
-cd router
+cd rust
 cargo build --release
 
 # Dev / local testing (auth + E2E gates relaxed — NEVER production):

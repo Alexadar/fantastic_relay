@@ -16,6 +16,13 @@ target/
 **/*.rs.bk
 *.pdb
 
+# Swift (Package.resolved IS committed for reproducible builds)
+.build/
+**/.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj
+
 # Secrets — never commit
 .env
 .env.*

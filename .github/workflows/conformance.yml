@@ -1,0 +1,33 @@
+name: Conformance
+
+# Cross-implementation parity gate: build BOTH relays (Rust fantastic-router +
+# Swift relayd) and the language-agnostic runner, then run the runner against
+# both. macOS runner because it carries both toolchains (rustup + Swift).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Rust router (release)
+        run: cargo build --release --manifest-path rust/Cargo.toml --bin fantastic-router
+      - name: Build Swift relayd (release)
+        run: swift build -c release --package-path swift --product relayd
+      - name: Build conformance runner
+        run: cargo build --release --manifest-path conformance/Cargo.toml
+      - name: Run conformance against both implementations
+        run: |
+          ./conformance/target/release/conformance \
+            ./rust/target/release/fantastic-router \
+            ./swift/.build/release/relayd

@@ -4,6 +4,8 @@
 #
 #   - rust router  — fantastic-router prebuilt binaries
 #                    (linux amd64/arm64, macOS arm64)
+#   - swift relayd — relayd prebuilt binary (macOS arm64); RelayCore embeds in
+#                    the Pro app directly via SwiftPM, not shipped here.
 #
 # Each artifact gets a SLSA build-provenance attestation
 # (actions/attest-build-provenance), so every release is transparently
@@ -53,13 +55,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo build --release
-        working-directory: router
+        working-directory: rust
         run: cargo build --release --bin fantastic-router
       - name: Package binary
         run: |
           mkdir -p dist
           tar -czf "dist/fantastic-router-${{ matrix.label }}-${{ inputs.version }}.tar.gz" \
-            -C router/target/release fantastic-router
+            -C rust/target/release fantastic-router
       - uses: actions/attest-build-provenance@v1
         with:
           subject-path: "dist/fantastic-router-${{ matrix.label }}-${{ inputs.version }}.tar.gz"
@@ -68,10 +70,36 @@ jobs:
           name: router-${{ matrix.label }}
           path: dist/fantastic-router-*.tar.gz
 
+  # ── Swift relayd host binary (macOS, embeds in the Pro app via RelayCore) ──
+  swift:
+    name: relayd (macos-arm64)
+    runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift build -c release
+        working-directory: swift
+        run: swift build -c release --product relayd
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          tar -czf "dist/fantastic-relayd-macos-arm64-${{ inputs.version }}.tar.gz" \
+            -C swift/.build/release relayd
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/fantastic-relayd-macos-arm64-${{ inputs.version }}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relayd-macos-arm64
+          path: dist/fantastic-relayd-*.tar.gz
+
   # ── Collect everything into a GitHub Release ──────────────────────────────
   release:
     name: GitHub Release
-    needs: [rust]
+    needs: [rust, swift]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -96,7 +124,8 @@ jobs:
           body: |
             Built + published from GitHub Actions (verifiable build provenance on each asset).
 
-            **Relay router host binaries:** linux amd64/arm64, macOS arm64.
+            **Rust router (`fantastic-router`):** linux amd64/arm64, macOS arm64.
+            **Swift daemon (`relayd`):** macOS arm64 (RelayCore embeds in the Pro app via SwiftPM).
 
             Self-host: download the binary for your arch, run it on loopback
             (`ROUTER_LISTEN_ADDR=127.0.0.1:9443`), and point your own tunnel

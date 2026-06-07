@@ -1,0 +1,22 @@
+[package]
+name = "conformance"
+version = "0.0.1"
+edition = "2021"
+description = "Language-agnostic black-box conformance runner for the Fantastic Relay (CONTRACT v1). Boots a relay binary and asserts pairing + opaque forwarding."
+license = "AGPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "conformance"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = ">=0.23, <0.24"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ed25519-dalek = "2"
+base64 = "0.22"
+getrandom = "0.2"
+anyhow = "1"

@@ -29,6 +29,23 @@ no long-lived secrets, and no vault — it does three things and stops:
 `wss://<your-own-tunnel>/…` (self-hosted, free) or a managed/paid URL. Same
 binary either way. That URL field *is* the self-hosted-vs-managed switch.
 
+## Two implementations, one contract
+
+The relay ships as **two interchangeable implementations** behind a single frozen
+wire [`CONTRACT.md`](CONTRACT.md), kept honest by one [`conformance/`](conformance)
+suite that both must pass:
+
+| | [`rust/`](rust) — `fantastic-router` | [`swift/`](swift) — `RelayCore` + `relayd` |
+|---|---|---|
+| Role | reference / hosted-at-scale tier | embeds natively in the Pro macOS app (SwiftPM, no FFI) |
+| Stack | tokio + tokio-tungstenite | SwiftNIO + swift-crypto (Linux too) |
+| Embed API | `ws::start() -> ServerHandle` | `RelayServer.start() -> RelayServerHandle` |
+
+`conformance/` boots each binary and drives real WebSocket clients through it —
+pairing, opaque Text+Binary forwarding, auth rejection, ping/pong, pair timeout —
+and CI runs it against **both**. Per-language docs: [`rust/README.md`](rust/README.md) ·
+[`swift/README.md`](swift/README.md) · [`conformance/README.md`](conformance/README.md).
+
 ## ⚠ Security model — read this
 
 The relay moves **opaque** frames and never inspects payloads. Confidentiality
@@ -71,14 +88,14 @@ proxy — proof the dumb-pipe design is deployment-agnostic.
 ## Build & run
 
 ```sh
-cd router
+cd rust
 cargo build --release            # binary: target/release/fantastic-router
 ROUTER_CONTROL_PLANE_PUBKEY=<base64-ed25519-pubkey> \
   ROUTER_LISTEN_ADDR=127.0.0.1:9443 \
   cargo run --release --bin fantastic-router
 ```
 
-Key environment variables (see [`router/src/config.rs`](router/src/config.rs)):
+Key environment variables (see [`rust/src/config.rs`](rust/src/config.rs)):
 
 | Var | Default | Meaning |
 |---|---|---|
@@ -115,7 +132,7 @@ repo ships only the router and docs.
 
 The token format, subprotocol auth, `(tenant, rendezvous)` addressing, and the
 opaque-frame framing are the published contract that `cloud_bridge` (and any
-client) targets — see [`router/CONTRACT.md`](router/CONTRACT.md).
+client) targets — see [`CONTRACT.md`](CONTRACT.md).
 
 ## Status
 

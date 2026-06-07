@@ -36,8 +36,27 @@ pub async fn serve(
     rendezvous: Arc<InMemoryRendezvous>,
     meter: Arc<StdoutMeter>,
 ) -> anyhow::Result<()> {
-    // E2E launch-gate: the endpoints have no peer E2E layer yet, so in a
-    // production posture we refuse to carry plaintext.
+    preflight(&config)?;
+
+    let (sh_tx, sh_rx) = watch::channel(false);
+    spawn_signal_handler(sh_tx);
+
+    let listener = TcpListener::bind(&config.listen_addr).await?;
+    tracing::info!(addr = %config.listen_addr, "router listening");
+
+    accept_loop(
+        listener,
+        Arc::new(config),
+        verifier,
+        rendezvous,
+        meter,
+        sh_rx,
+    )
+    .await
+}
+
+/// Pre-launch checks shared by `serve` and `start`: the E2E gate + warnings.
+fn preflight(config: &Config) -> anyhow::Result<()> {
     if config.require_e2e && !config.e2e_asserted {
         anyhow::bail!(
             "refusing to launch: ROUTER_REQUIRE_E2E is set but ROUTER_E2E_ASSERTED is not. \
@@ -58,22 +77,60 @@ pub async fn serve(
              Never run this in production."
         );
     }
+    Ok(())
+}
 
-    let (sh_tx, sh_rx) = watch::channel(false);
-    spawn_signal_handler(sh_tx);
+/// A running server for in-process embedding (e.g. the Pro Mac app). The
+/// blocking `serve` is for the CLI; `start` returns this handle so the host
+/// supervises lifetime. Mirrors the Swift `RelayServerHandle`.
+pub struct ServerHandle {
+    local_addr: std::net::SocketAddr,
+    shutdown: watch::Sender<bool>,
+    task: tokio::task::JoinHandle<()>,
+}
 
+impl ServerHandle {
+    /// The actually-bound address (useful when binding to port 0).
+    pub fn local_addr(&self) -> std::net::SocketAddr {
+        self.local_addr
+    }
+
+    /// Signal a graceful drain and await the accept loop's exit.
+    pub async fn shutdown(self) {
+        let _ = self.shutdown.send(true);
+        let _ = self.task.await;
+    }
+}
+
+/// Non-blocking embed entry: preflight, bind, spawn the accept loop, and return
+/// a handle. The caller controls shutdown (no signal handler is installed).
+pub async fn start(
+    config: Config,
+    verifier: Arc<Ed25519Verifier>,
+    rendezvous: Arc<InMemoryRendezvous>,
+    meter: Arc<StdoutMeter>,
+) -> anyhow::Result<ServerHandle> {
+    preflight(&config)?;
     let listener = TcpListener::bind(&config.listen_addr).await?;
-    tracing::info!(addr = %config.listen_addr, "router listening");
-
-    accept_loop(
-        listener,
-        Arc::new(config),
-        verifier,
-        rendezvous,
-        meter,
-        sh_rx,
-    )
-    .await
+    let local_addr = listener.local_addr()?;
+    tracing::info!(addr = %local_addr, "router listening");
+    let (sh_tx, sh_rx) = watch::channel(false);
+    let task = tokio::spawn(async move {
+        let _ = accept_loop(
+            listener,
+            Arc::new(config),
+            verifier,
+            rendezvous,
+            meter,
+            sh_rx,
+        )
+        .await;
+    });
+    Ok(ServerHandle {
+        local_addr,
+        shutdown: sh_tx,
+        task,
+    })
 }
 
 /// The accept loop, factored out so tests can drive it on an arbitrary listener
