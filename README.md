@@ -9,6 +9,12 @@ A **dumb, zero-trust opaque-frame WebSocket relay** for the
 lets any device reach any other through NAT/firewalls by **pairing two
 outbound connections and forwarding opaque bytes between them** — nothing more.
 
+Part of the **Aisixteen Fantastic** family, alongside the
+[kernel](https://github.com/Alexadar/fantastic_canvas) (`fantastic_canvas`) and
+the [Apple client](https://github.com/Alexadar/fantastic_app) (`fantastic_app`)
+— by the same author, under one license. It interoperates with them only over
+the wire protocol; it does not vendor or link their source.
+
 It is deliberately **not** a Fantastic kernel. A kernel's `send`/`reflect` are
 protocol-floor verbs that would expose a local agent namespace to every
 connected peer. The relay's invariant is the opposite: a peer can address
