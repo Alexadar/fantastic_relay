@@ -1,0 +1,104 @@
+# Manual release builder — NOT automatic. Press "Run workflow"
+# (workflow_dispatch) to build + publish the relay router binary from GitHub,
+# so the artifacts carry GH build provenance that anyone can verify.
+#
+#   - rust router  — fantastic-router prebuilt binaries
+#                    (linux amd64/arm64, macOS arm64)
+#
+# Each artifact gets a SLSA build-provenance attestation
+# (actions/attest-build-provenance), so every release is transparently
+# "built + published from this repo on GitHub". Self-hosters download a
+# binary, run it on loopback, and point their own tunnel at it.
+name: Release (manual)
+
+run-name: "Release ${{ inputs.version }} by @${{ github.actor }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version / tag (e.g. v0.1.0)"
+        required: true
+        type: string
+      draft:
+        description: "Create the GitHub Release as a draft"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Rust router host binaries (matrix) ────────────────────────────────────
+  rust:
+    name: router (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, label: linux-amd64 }
+          - { os: ubuntu-24.04-arm, label: linux-arm64 }
+          - { os: macos-14, label: macos-arm64 }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo build --release
+        working-directory: router
+        run: cargo build --release --bin fantastic-router
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          tar -czf "dist/fantastic-router-${{ matrix.label }}-${{ inputs.version }}.tar.gz" \
+            -C router/target/release fantastic-router
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/fantastic-router-${{ matrix.label }}-${{ inputs.version }}.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: router-${{ matrix.label }}
+          path: dist/fantastic-router-*.tar.gz
+
+  # ── Collect everything into a GitHub Release ──────────────────────────────
+  release:
+    name: GitHub Release
+    needs: [rust]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -name '*.tar.gz' -exec cp {} release/ \;
+          ls -la release/
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          draft: ${{ inputs.draft }}
+          generate_release_notes: true
+          files: release/*
+          body: |
+            Built + published from GitHub Actions (verifiable build provenance on each asset).
+
+            **Relay router host binaries:** linux amd64/arm64, macOS arm64.
+
+            Self-host: download the binary for your arch, run it on loopback
+            (`ROUTER_LISTEN_ADDR=127.0.0.1:9443`), and point your own tunnel
+            (e.g. `cloudflared`) at it. Apps then connect by entering the
+            resulting router URL. See README.

@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor / tooling
+.idea/
+*.swp
+.claude/
+
+# Scratch (gitignored by request)
+tmp/
+
+# Rust (Cargo.lock IS committed — this is a binary crate)
+target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Tunnel credentials (cloudflared)
+*.cloudflared/
+cert.pem
+*.tunnel.json

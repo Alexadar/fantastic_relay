@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Aisixteen Fantastic — Relay (data-plane router)"
+abstract: >-
+  A dumb, zero-trust opaque-frame WebSocket relay that pairs Aisixteen Fantastic
+  cloud_bridge endpoints through NAT/firewalls: verify a control-plane token,
+  pair two peers by rendezvous, forward opaque bytes, and meter — never reading
+  the payload.
+type: software
+authors:
+  - family-names: Koreniuk
+    given-names: Oleksandr
+    alias: aisixteen
+repository-code: "https://github.com/Alexadar/fantastic_relay"
+url: "https://github.com/Alexadar/fantastic_relay"
+license: AGPL-3.0-or-later
+keywords:
+  - relay
+  - rendezvous
+  - websocket
+  - zero-trust
+  - nat-traversal
+  - rust

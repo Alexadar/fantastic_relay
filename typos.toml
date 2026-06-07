@@ -1,0 +1,25 @@
+# typos.toml — allowlist for `crate-ci/typos`.
+#
+# Run by .github/workflows/spellcheck.yml on every PR. Add a term here when
+# it's an intentional identifier the spell-checker flags as a typo. Keep the
+# list small — every entry weakens the gate.
+
+[default.extend-identifiers]
+# Directional byte counters in forward.rs: a2b carries A→B, b2a carries B→A.
+# The pair is symmetric; renaming half breaks the symmetry.
+a2b = "a2b"
+b2a = "b2a"
+
+[default.extend-words]
+# JWT-style registered claim abbreviations used in Claims (auth.rs): not typos.
+aud = "aud"
+nbf = "nbf"
+iat = "iat"
+jti = "jti"
+
+[files]
+extend-exclude = [
+    "target/",
+    "tmp/",
+    "Cargo.lock",
+]
