@@ -138,3 +138,34 @@ impl std::fmt::Debug for Config {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_redacts_key_material() {
+        let c = Config {
+            listen_addr: "127.0.0.1:9443".into(),
+            control_plane_pubkey_b64: Some("SUPERSECRETKEY".into()),
+            control_plane_pubkey_next_b64: Some("NEXTSECRET".into()),
+            audience: "fantastic.relay".into(),
+            require_e2e: true,
+            e2e_asserted: false,
+            pair_timeout_secs: 30,
+            max_frame_bytes: 16 << 20,
+            max_session_bytes: 50 << 30,
+            max_conns_global: 4096,
+            max_conns_per_ip: 64,
+            max_waiting_global: 2048,
+            max_waiting_per_tenant: 64,
+            token_max_lifetime_secs: 60,
+            heartbeat_secs: 60,
+        };
+        let s = format!("{c:?}");
+        assert!(s.contains("<redacted>"));
+        assert!(!s.contains("SUPERSECRETKEY"));
+        assert!(!s.contains("NEXTSECRET"));
+        assert!(s.contains("fantastic.relay"));
+    }
+}

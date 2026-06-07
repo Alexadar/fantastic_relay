@@ -173,3 +173,181 @@ impl TokenVerifier for Ed25519Verifier {
         Ok(claims)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::Signer;
+
+    fn kp() -> (ed25519_dalek::SigningKey, String) {
+        let mut seed = [0u8; 32];
+        getrandom::getrandom(&mut seed).unwrap();
+        let sk = ed25519_dalek::SigningKey::from_bytes(&seed);
+        let pk = STANDARD.encode(sk.verifying_key().to_bytes());
+        (sk, pk)
+    }
+
+    fn cfg(pubkey: Option<String>, next: Option<String>) -> Config {
+        Config {
+            listen_addr: "127.0.0.1:0".into(),
+            control_plane_pubkey_b64: pubkey,
+            control_plane_pubkey_next_b64: next,
+            audience: "aud".into(),
+            require_e2e: false,
+            e2e_asserted: true,
+            pair_timeout_secs: 30,
+            max_frame_bytes: 1 << 20,
+            max_session_bytes: 1 << 30,
+            max_conns_global: 100,
+            max_conns_per_ip: 100,
+            max_waiting_global: 100,
+            max_waiting_per_tenant: 100,
+            token_max_lifetime_secs: 60,
+            heartbeat_secs: 60,
+        }
+    }
+
+    fn base_claims() -> Claims {
+        let now = now_unix();
+        Claims {
+            tenant_id: "t".into(),
+            peer_id: "p".into(),
+            rendezvous: "r".into(),
+            partner_peer_id: String::new(),
+            aud: "aud".into(),
+            iat: now,
+            nbf: 0,
+            exp: now + 30,
+            jti: String::new(),
+        }
+    }
+
+    fn sign(sk: &ed25519_dalek::SigningKey, c: &Claims) -> String {
+        let payload = serde_json::to_vec(c).unwrap();
+        let sig = sk.sign(&payload);
+        format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(&payload),
+            URL_SAFE_NO_PAD.encode(sig.to_bytes())
+        )
+    }
+
+    fn verifier(pubkey: String) -> Ed25519Verifier {
+        Ed25519Verifier::from_config(&cfg(Some(pubkey), None)).unwrap()
+    }
+
+    #[test]
+    fn accepts_valid() {
+        let (sk, pk) = kp();
+        let claims = verifier(pk)
+            .verify(&sign(&sk, &base_claims()))
+            .expect("valid");
+        assert_eq!(claims.tenant_id, "t");
+        assert_eq!(claims.peer_id, "p");
+    }
+
+    #[test]
+    fn from_config_requires_a_key() {
+        assert!(Ed25519Verifier::from_config(&cfg(None, None)).is_err());
+    }
+
+    #[test]
+    fn rejects_bad_signature() {
+        let (_sk, pk) = kp();
+        let (other, _) = kp();
+        assert!(verifier(pk).verify(&sign(&other, &base_claims())).is_err());
+    }
+
+    #[test]
+    fn rejects_tampered_payload() {
+        let (sk, pk) = kp();
+        let mut t = sign(&sk, &base_claims());
+        t.insert(1, 'X');
+        assert!(verifier(pk).verify(&t).is_err());
+    }
+
+    #[test]
+    fn rejects_missing_signature() {
+        let pk = kp().1;
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&base_claims()).unwrap());
+        assert!(verifier(pk).verify(&payload).is_err());
+    }
+
+    #[test]
+    fn rejects_malformed() {
+        assert!(verifier(kp().1).verify("!!!.???").is_err());
+    }
+
+    #[test]
+    fn rejects_expired() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.iat = now_unix() - 100;
+        c.exp = now_unix() - 1;
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_not_yet_valid() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.nbf = now_unix() + 600;
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_future_iat() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.iat = now_unix() + 600;
+        c.exp = c.iat + 30;
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_overlong_lifetime() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.exp = c.iat + 3600; // > 60s max
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_audience() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.aud = "someone-else".into();
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_incomplete_claims() {
+        let (sk, pk) = kp();
+        let mut c = base_claims();
+        c.peer_id = String::new();
+        assert!(verifier(pk).verify(&sign(&sk, &c)).is_err());
+    }
+
+    #[test]
+    fn rejects_replayed_jti() {
+        let (sk, pk) = kp();
+        let v = verifier(pk);
+        let mut c = base_claims();
+        c.jti = "single-use".into();
+        let t = sign(&sk, &c);
+        assert!(v.verify(&t).is_ok());
+        assert!(v.verify(&t).is_err());
+    }
+
+    #[test]
+    fn accepts_next_key_during_rotation() {
+        let (sk1, pk1) = kp();
+        let (sk2, pk2) = kp();
+        let v = Ed25519Verifier::from_config(&cfg(Some(pk1), Some(pk2))).unwrap();
+        assert!(v.verify(&sign(&sk1, &base_claims())).is_ok());
+        // a fresh-jti token signed by the NEXT key is also accepted
+        let mut c = base_claims();
+        c.jti = "next".into();
+        assert!(v.verify(&sign(&sk2, &c)).is_ok());
+    }
+}

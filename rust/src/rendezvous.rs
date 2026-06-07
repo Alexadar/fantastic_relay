@@ -229,3 +229,127 @@ impl InMemoryRendezvous {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::Claims;
+    use crate::config::Config;
+    use futures_util::{sink, stream, SinkExt};
+
+    fn cfg(max_per_tenant: usize) -> Config {
+        Config {
+            listen_addr: "127.0.0.1:0".into(),
+            control_plane_pubkey_b64: None,
+            control_plane_pubkey_next_b64: None,
+            audience: "aud".into(),
+            require_e2e: false,
+            e2e_asserted: true,
+            pair_timeout_secs: 30,
+            max_frame_bytes: 1 << 20,
+            max_session_bytes: 1 << 30,
+            max_conns_global: 100,
+            max_conns_per_ip: 100,
+            max_waiting_global: 100,
+            max_waiting_per_tenant: max_per_tenant,
+            token_max_lifetime_secs: 60,
+            heartbeat_secs: 60,
+        }
+    }
+
+    fn claims(tenant: &str, peer: &str, partner: &str, rv: &str) -> Claims {
+        Claims {
+            tenant_id: tenant.into(),
+            peer_id: peer.into(),
+            rendezvous: rv.into(),
+            partner_peer_id: partner.into(),
+            aud: "aud".into(),
+            iat: 0,
+            nbf: 0,
+            exp: 0,
+            jti: String::new(),
+        }
+    }
+
+    // A socket whose halves never produce/consume real I/O — enough to test the
+    // pure pairing logic, which only inspects claims.
+    fn sock(c: Claims) -> PeerSocket {
+        let stream: FrameStream = Box::pin(stream::pending());
+        let snk: FrameSink =
+            Box::pin(sink::drain().sink_map_err(|never: std::convert::Infallible| match never {}));
+        PeerSocket {
+            stream,
+            sink: snk,
+            claims: c,
+        }
+    }
+
+    fn rv(max_per_tenant: usize) -> InMemoryRendezvous {
+        InMemoryRendezvous::from_config(&cfg(max_per_tenant))
+    }
+
+    #[test]
+    fn first_waits_second_pairs() {
+        let r = rv(100);
+        let _first = match r.join(sock(claims("t", "A", "B", "r1"))) {
+            Join::Waiting(t) => t,
+            _ => panic!("first should wait"),
+        };
+        assert!(matches!(
+            r.join(sock(claims("t", "B", "A", "r1"))),
+            Join::Paired { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_self_pair() {
+        let r = rv(100);
+        let _first = match r.join(sock(claims("t", "A", "", "r1"))) {
+            Join::Waiting(t) => t,
+            _ => panic!("wait"),
+        };
+        match r.join(sock(claims("t", "A", "", "r1"))) {
+            Join::Rejected { reason, .. } => assert_eq!(reason, "self-pair"),
+            _ => panic!("expected self-pair reject"),
+        }
+    }
+
+    #[test]
+    fn rejects_partner_mismatch() {
+        let r = rv(100);
+        let _first = match r.join(sock(claims("t", "A", "B", "r1"))) {
+            Join::Waiting(t) => t,
+            _ => panic!("wait"),
+        };
+        match r.join(sock(claims("t", "C", "A", "r1"))) {
+            Join::Rejected { reason, .. } => assert_eq!(reason, "partner-mismatch"),
+            _ => panic!("expected partner-mismatch reject"),
+        }
+    }
+
+    #[test]
+    fn enforces_waiting_cap_per_tenant() {
+        let r = rv(1);
+        let _w1 = match r.join(sock(claims("t", "A", "", "r1"))) {
+            Join::Waiting(t) => t,
+            _ => panic!("wait"),
+        };
+        match r.join(sock(claims("t", "B", "", "r2"))) {
+            Join::Rejected { reason, .. } => assert_eq!(reason, "waiting-cap"),
+            _ => panic!("expected waiting-cap reject"),
+        }
+    }
+
+    #[test]
+    fn different_tenant_is_separate_namespace() {
+        let r = rv(100);
+        let _a = match r.join(sock(claims("t1", "A", "", "rv"))) {
+            Join::Waiting(t) => t,
+            _ => panic!("wait"),
+        };
+        assert!(matches!(
+            r.join(sock(claims("t2", "B", "", "rv"))),
+            Join::Waiting(_)
+        ));
+    }
+}

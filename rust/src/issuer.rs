@@ -139,3 +139,45 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     }
     diff == 0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn issuer() -> Issuer {
+        let mut seed = [0u8; 32];
+        getrandom::getrandom(&mut seed).unwrap();
+        Issuer::new(SigningKey::from_bytes(&seed), "fantastic.relay", 60)
+            .with_provider(Box::new(PasswordProvider::new("pw", "t1")))
+    }
+
+    #[test]
+    fn password_provider_authenticates() {
+        let p = PasswordProvider::new("pw", "t1");
+        assert_eq!(p.name(), "password");
+        assert_eq!(p.authenticate("pw"), Some("t1".to_string()));
+        assert_eq!(p.authenticate("nope"), None);
+    }
+
+    #[test]
+    fn issue_ok_with_right_password() {
+        assert!(issuer().issue("password", "pw", "A", "B", "rv").is_ok());
+    }
+
+    #[test]
+    fn issue_err_with_wrong_password() {
+        assert!(issuer().issue("password", "wrong", "A", "B", "rv").is_err());
+    }
+
+    #[test]
+    fn issue_err_unknown_provider() {
+        assert!(issuer().issue("google", "pw", "A", "B", "rv").is_err());
+    }
+
+    #[test]
+    fn ct_eq_compares_correctly() {
+        assert!(ct_eq(b"abc", b"abc"));
+        assert!(!ct_eq(b"abc", b"abd"));
+        assert!(!ct_eq(b"ab", b"abc"));
+    }
+}

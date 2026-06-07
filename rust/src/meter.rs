@@ -119,3 +119,36 @@ fn now_unix() -> u64 {
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_id_is_stable_and_distinguishes_rendezvous() {
+        let m = StdoutMeter::new();
+        assert_eq!(m.session_id("rv-a"), m.session_id("rv-a"));
+        assert_ne!(m.session_id("rv-a"), m.session_id("rv-b"));
+        assert_eq!(m.session_id("rv-a").len(), 16);
+    }
+
+    #[test]
+    fn usage_event_serializes_snake_case() {
+        let e = UsageEvent::new(UsageKind::SessionClose, "t1", "sid", 3, 10, 20, 5);
+        let j = serde_json::to_value(&e).unwrap();
+        assert_eq!(j["tenant_id"], "t1");
+        assert_eq!(j["session_id"], "sid");
+        assert_eq!(j["seq"], 3);
+        assert_eq!(j["bytes_a_to_b"], 10);
+        assert_eq!(j["bytes_b_to_a"], 20);
+        assert_eq!(j["conn_seconds"], 5);
+        assert_eq!(j["kind"], "session_close");
+        assert!(!j["event_id"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn heartbeat_kind_serializes() {
+        let e = UsageEvent::new(UsageKind::Heartbeat, "t", "s", 0, 0, 0, 0);
+        assert_eq!(serde_json::to_value(&e).unwrap()["kind"], "heartbeat");
+    }
+}
