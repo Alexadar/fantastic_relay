@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn ct_eq_compares_correctly() {
         assert!(ct_eq(b"abc", b"abc"));
-        assert!(!ct_eq(b"abc", b"abd"));
+        assert!(!ct_eq(b"abc", b"abz"));
         assert!(!ct_eq(b"ab", b"abc"));
     }
 }
