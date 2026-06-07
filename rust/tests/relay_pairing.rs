@@ -71,6 +71,10 @@ async fn spawn() -> Harness {
 }
 
 fn sign_token(signing: &SigningKey, peer: &str, partner: &str, rv: &str) -> String {
+    sign_token_t(signing, "t1", peer, partner, rv)
+}
+
+fn sign_token_t(signing: &SigningKey, tenant: &str, peer: &str, partner: &str, rv: &str) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -78,7 +82,7 @@ fn sign_token(signing: &SigningKey, peer: &str, partner: &str, rv: &str) -> Stri
     let mut nonce = [0u8; 8];
     getrandom::getrandom(&mut nonce).unwrap();
     let claims = Claims {
-        tenant_id: "t1".into(),
+        tenant_id: tenant.into(),
         peer_id: peer.into(),
         rendezvous: rv.into(),
         partner_peer_id: partner.into(),
@@ -167,4 +171,29 @@ async fn rejects_bad_token() {
         connect(h.addr, &token).await.is_err(),
         "bad token must be rejected pre-upgrade"
     );
+}
+
+#[tokio::test]
+async fn tenants_are_isolated() {
+    // Two tenants quote the SAME rendezvous; they pair WITHIN a tenant and never
+    // cross. Multi-user routing isolation over the real WS path.
+    let h = spawn().await;
+    let mut a = connect(h.addr, &sign_token_t(&h.signing, "t1", "A", "", "shared"))
+        .await
+        .unwrap();
+    let mut c = connect(h.addr, &sign_token_t(&h.signing, "t2", "C", "", "shared"))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let mut b = connect(h.addr, &sign_token_t(&h.signing, "t1", "B", "", "shared"))
+        .await
+        .unwrap();
+    let mut d = connect(h.addr, &sign_token_t(&h.signing, "t2", "D", "", "shared"))
+        .await
+        .unwrap();
+
+    a.send(Message::Binary(b"t1-only".to_vec())).await.unwrap();
+    assert_eq!(next_msg(&mut b).await, Message::Binary(b"t1-only".to_vec()));
+    c.send(Message::Binary(b"t2-only".to_vec())).await.unwrap();
+    assert_eq!(next_msg(&mut d).await, Message::Binary(b"t2-only".to_vec()));
 }

@@ -42,6 +42,17 @@ impl Issuer {
         STANDARD.encode(self.signing.verifying_key().to_bytes())
     }
     fn token(&self, peer: &str, partner: &str, rendezvous: &str, lifetime: u64) -> String {
+        self.token_for("t1", peer, partner, rendezvous, lifetime)
+    }
+
+    fn token_for(
+        &self,
+        tenant: &str,
+        peer: &str,
+        partner: &str,
+        rendezvous: &str,
+        lifetime: u64,
+    ) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -52,7 +63,7 @@ impl Issuer {
         getrandom::getrandom(&mut nonce).unwrap();
         let jti = format!("{peer}-{rendezvous}-{}", URL_SAFE_NO_PAD.encode(nonce));
         let claims = json!({
-            "tenant_id": "t1",
+            "tenant_id": tenant,
             "peer_id": peer,
             "rendezvous": rendezvous,
             "partner_peer_id": partner,
@@ -236,6 +247,28 @@ async fn scenario_pair_timeout(addr: SocketAddr, issuer: &Issuer) -> anyhow::Res
     Ok(())
 }
 
+async fn scenario_tenant_isolation(addr: SocketAddr, issuer: &Issuer) -> anyhow::Result<()> {
+    // Two tenants quote the SAME rendezvous; they must pair within a tenant and
+    // never cross.
+    let mut a = connect(addr, &issuer.token_for("t1", "A", "", "shared", 60)).await?;
+    let mut c = connect(addr, &issuer.token_for("t2", "C", "", "shared", 60)).await?;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    let mut b = connect(addr, &issuer.token_for("t1", "B", "", "shared", 60)).await?;
+    let mut d = connect(addr, &issuer.token_for("t2", "D", "", "shared", 60)).await?;
+
+    a.send(Message::Binary(b"t1-only".to_vec())).await?;
+    anyhow::ensure!(
+        next_msg(&mut b).await == Message::Binary(b"t1-only".to_vec()),
+        "tenant t1 A->B mismatch"
+    );
+    c.send(Message::Binary(b"t2-only".to_vec())).await?;
+    anyhow::ensure!(
+        next_msg(&mut d).await == Message::Binary(b"t2-only".to_vec()),
+        "tenant t2 C->D mismatch"
+    );
+    Ok(())
+}
+
 async fn run_all(binary: &str) -> anyhow::Result<()> {
     println!("== conformance against `{binary}` ==");
     let issuer = Issuer::new();
@@ -248,6 +281,7 @@ async fn run_all(binary: &str) -> anyhow::Result<()> {
         "bad_token_rejected",
         "ping_pong",
         "pair_timeout",
+        "tenant_isolation",
     ];
 
     for name in cases {
@@ -260,6 +294,7 @@ async fn run_all(binary: &str) -> anyhow::Result<()> {
             "bad_token_rejected" => scenario_bad_token_rejected(addr, &issuer).await,
             "ping_pong" => scenario_ping_pong(addr, &issuer).await,
             "pair_timeout" => scenario_pair_timeout(addr, &issuer).await,
+            "tenant_isolation" => scenario_tenant_isolation(addr, &issuer).await,
             _ => unreachable!(),
         };
         drop(relay);
