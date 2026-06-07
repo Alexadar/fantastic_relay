@@ -14,6 +14,10 @@ path = "src/main.rs"
 name = "relay-probe"
 path = "src/bin/relay-probe.rs"
 
+[[bin]]
+name = "fantastic-issue"
+path = "src/bin/fantastic-issue.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 # LOAD-BEARING PIN: tungstenite 0.24 changes Message::Text(String)/Binary(Vec<u8>)

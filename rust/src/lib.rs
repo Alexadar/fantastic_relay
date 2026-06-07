@@ -8,6 +8,7 @@ pub mod auth;
 pub mod config;
 pub mod error;
 pub mod forward;
+pub mod issuer;
 pub mod meter;
 pub mod rendezvous;
 pub mod ws;
