@@ -36,8 +36,6 @@ pub async fn serve(
     rendezvous: Arc<InMemoryRendezvous>,
     meter: Arc<StdoutMeter>,
 ) -> anyhow::Result<()> {
-    preflight(&config)?;
-
     let (sh_tx, sh_rx) = watch::channel(false);
     spawn_signal_handler(sh_tx);
 
@@ -53,25 +51,6 @@ pub async fn serve(
         sh_rx,
     )
     .await
-}
-
-/// Pre-launch checks shared by `serve` and `start`: the E2E gate + warnings.
-fn preflight(config: &Config) -> anyhow::Result<()> {
-    if config.require_e2e && !config.e2e_asserted {
-        anyhow::bail!(
-            "refusing to launch: ROUTER_REQUIRE_E2E is set but ROUTER_E2E_ASSERTED is not. \
-             The endpoints have no end-to-end encryption yet, so carrying production traffic \
-             would expose plaintext to this relay. Set ROUTER_E2E_ASSERTED=true only once \
-             cloud_bridge ships end-to-end encryption, or ROUTER_REQUIRE_E2E=false for non-prod use."
-        );
-    }
-    if !config.e2e_asserted {
-        tracing::warn!(
-            "PLAINTEXT MODE: payloads are NOT end-to-end encrypted; a relay/tunnel compromise \
-             leaks full content. Do not carry production traffic."
-        );
-    }
-    Ok(())
 }
 
 /// A running server for in-process embedding (e.g. the Pro Mac app). The
@@ -96,15 +75,14 @@ impl ServerHandle {
     }
 }
 
-/// Non-blocking embed entry: preflight, bind, spawn the accept loop, and return
-/// a handle. The caller controls shutdown (no signal handler is installed).
+/// Non-blocking embed entry: bind, spawn the accept loop, and return a handle.
+/// The caller controls shutdown (no signal handler is installed).
 pub async fn start(
     config: Config,
     verifier: Arc<Ed25519Verifier>,
     rendezvous: Arc<InMemoryRendezvous>,
     meter: Arc<StdoutMeter>,
 ) -> anyhow::Result<ServerHandle> {
-    preflight(&config)?;
     let listener = TcpListener::bind(&config.listen_addr).await?;
     let local_addr = listener.local_addr()?;
     tracing::info!(addr = %local_addr, "router listening");

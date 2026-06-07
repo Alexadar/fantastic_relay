@@ -17,8 +17,7 @@
 
             let config = Config(
                 listenHost: "127.0.0.1", listenPort: 0,
-                controlPlanePubkeyB64: issuer.publicKeyB64,
-                requireE2E: false, e2eAsserted: true)
+                controlPlanePubkeyB64: issuer.publicKeyB64)
             let server = try RelayServer(config: config)
             let handle = try server.start()
             defer { handle.shutdown() }

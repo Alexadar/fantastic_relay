@@ -243,8 +243,6 @@ mod tests {
             control_plane_pubkey_b64: None,
             control_plane_pubkey_next_b64: None,
             audience: "aud".into(),
-            require_e2e: false,
-            e2e_asserted: true,
             pair_timeout_secs: 30,
             max_frame_bytes: 1 << 20,
             max_session_bytes: 1 << 30,

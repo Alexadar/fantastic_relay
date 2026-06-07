@@ -25,15 +25,6 @@ pub struct Config {
     /// mismatch.
     pub audience: String,
 
-    /// When true (default), the router refuses to launch unless the operator
-    /// asserts the endpoints are E2E-capable (`e2e_asserted`). When false, it
-    /// launches with a loud plaintext warning. Until `cloud_bridge` ships
-    /// end-to-end encryption, payloads are plaintext and a relay compromise
-    /// leaks full content.
-    pub require_e2e: bool,
-    /// Operator assertion that the endpoints carry their own E2E layer.
-    pub e2e_asserted: bool,
-
     /// Max seconds a half-open connection waits for its pair before timeout.
     pub pair_timeout_secs: u64,
 
@@ -67,16 +58,6 @@ fn env_or<T: FromStr>(key: &str, default: T) -> T {
         .unwrap_or(default)
 }
 
-fn env_bool(key: &str, default: bool) -> bool {
-    match std::env::var(key) {
-        Ok(v) => matches!(
-            v.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        ),
-        Err(_) => default,
-    }
-}
-
 impl Config {
     pub fn from_env() -> Result<Self, RouterError> {
         let control_plane_pubkey_b64 = std::env::var("ROUTER_CONTROL_PLANE_PUBKEY").ok();
@@ -92,8 +73,6 @@ impl Config {
             control_plane_pubkey_b64,
             control_plane_pubkey_next_b64: std::env::var("ROUTER_CONTROL_PLANE_PUBKEY_NEXT").ok(),
             audience: std::env::var("ROUTER_AUDIENCE").unwrap_or_else(|_| "fantastic.relay".into()),
-            require_e2e: env_bool("ROUTER_REQUIRE_E2E", true),
-            e2e_asserted: env_bool("ROUTER_E2E_ASSERTED", false),
             pair_timeout_secs: env_or("ROUTER_PAIR_TIMEOUT_SECS", 30),
             max_frame_bytes: env_or("ROUTER_MAX_FRAME_BYTES", 16 << 20),
             max_session_bytes: env_or("ROUTER_MAX_SESSION_BYTES", 50u64 << 30), // 50 GiB
@@ -124,8 +103,6 @@ impl std::fmt::Debug for Config {
                     .map(|_| "<redacted>"),
             )
             .field("audience", &self.audience)
-            .field("require_e2e", &self.require_e2e)
-            .field("e2e_asserted", &self.e2e_asserted)
             .field("pair_timeout_secs", &self.pair_timeout_secs)
             .field("max_frame_bytes", &self.max_frame_bytes)
             .field("max_session_bytes", &self.max_session_bytes)
@@ -150,8 +127,6 @@ mod tests {
             control_plane_pubkey_b64: Some("SUPERSECRETKEY".into()),
             control_plane_pubkey_next_b64: Some("NEXTSECRET".into()),
             audience: "fantastic.relay".into(),
-            require_e2e: true,
-            e2e_asserted: false,
             pair_timeout_secs: 30,
             max_frame_bytes: 16 << 20,
             max_session_bytes: 50 << 30,

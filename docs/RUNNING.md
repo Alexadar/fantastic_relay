@@ -15,7 +15,6 @@ cargo build --release
 eval "$(./target/release/fantastic-issue keygen | grep -v '^#')"
 # Run the router with the verifier public key.
 ROUTER_CONTROL_PLANE_PUBKEY="$ROUTER_CONTROL_PLANE_PUBKEY" \
-  ROUTER_E2E_ASSERTED=true \
   ROUTER_LISTEN_ADDR=127.0.0.1:9443 \
   ./target/release/fantastic-router
 ```

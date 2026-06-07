@@ -33,8 +33,6 @@ fn config_for(pubkey_b64: String) -> Config {
         control_plane_pubkey_b64: Some(pubkey_b64),
         control_plane_pubkey_next_b64: None,
         audience: "fantastic.relay".into(),
-        require_e2e: false,
-        e2e_asserted: true,
         pair_timeout_secs: 3,
         max_frame_bytes: 16 << 20,
         max_session_bytes: 1 << 30,

@@ -28,7 +28,7 @@ cargo test
 Env-driven (see [`src/config.rs`](src/config.rs) for the full set):
 
 ```sh
-ROUTER_CONTROL_PLANE_PUBKEY=<base64-ed25519> ROUTER_E2E_ASSERTED=true \
+ROUTER_CONTROL_PLANE_PUBKEY=<base64-ed25519> \
   ROUTER_LISTEN_ADDR=127.0.0.1:9443 ./target/release/fantastic-router
 ```
 

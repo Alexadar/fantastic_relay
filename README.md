@@ -65,14 +65,9 @@ the relay's. Concretely:
   can't prove it holds the peer's key, so relay routing honesty is irrelevant to
   security; forgery degrades to a rate-limited availability nuisance.
 
-**E2E is a prerequisite, not yet shipped.** Today's kernel `kernel_bridge`
-transport sends **plaintext JSON** — there is no peer end-to-end layer yet
-(that lands in `cloud_bridge`). Until it does, payloads are plaintext and a
-relay compromise leaks full content. The router therefore ships a
-`ROUTER_REQUIRE_E2E` launch-gate: in production it **refuses to launch** unless
-the operator asserts the endpoints are E2E-capable; otherwise it emits a loud
-plaintext warning. **Do not carry production traffic before the endpoint E2E
-layer + application heartbeat land.**
+The relay is **encryption-agnostic**: it forwards opaque bytes and neither adds
+nor requires payload encryption. End-to-end confidentiality, if wanted, is the
+endpoints' job (it lands in `cloud_bridge`); the relay is unaffected either way.
 
 Strict auth: a missing or invalid token **aborts the WebSocket handshake
 pre-upgrade (HTTP 401)** — no socket, no pairing slot.
@@ -107,7 +102,6 @@ Key environment variables (see [`rust/src/config.rs`](rust/src/config.rs)):
 |---|---|---|
 | `ROUTER_LISTEN_ADDR` | `127.0.0.1:9443` | loopback bind; a tunnel/proxy terminates TLS in front |
 | `ROUTER_CONTROL_PLANE_PUBKEY` | — | base64 Ed25519 public key of the token issuer (always required) |
-| `ROUTER_REQUIRE_E2E` | `true` | refuse to launch in prod unless `ROUTER_E2E_ASSERTED=true` |
 | `ROUTER_AUDIENCE` | `fantastic.relay` | expected token `aud` |
 | `ROUTER_MAX_FRAME_BYTES` | `16777216` | 16 MiB — matches the endpoints' max message size |
 | `ROUTER_PAIR_TIMEOUT_SECS` | `30` | how long a half-open connection waits for its pair |

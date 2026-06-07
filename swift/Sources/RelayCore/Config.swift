@@ -11,8 +11,6 @@ public struct Config: Sendable {
     public var controlPlanePubkeyB64: String?
     public var controlPlanePubkeyNextB64: String?
     public var audience: String
-    public var requireE2E: Bool
-    public var e2eAsserted: Bool
     public var pairTimeoutSecs: Int
     public var maxFrameBytes: Int
     public var maxSessionBytes: Int
@@ -25,8 +23,6 @@ public struct Config: Sendable {
         controlPlanePubkeyB64: String? = nil,
         controlPlanePubkeyNextB64: String? = nil,
         audience: String = "fantastic.relay",
-        requireE2E: Bool = true,
-        e2eAsserted: Bool = false,
         pairTimeoutSecs: Int = 30,
         maxFrameBytes: Int = 16 << 20,
         maxSessionBytes: Int = 50 << 30,
@@ -38,8 +34,6 @@ public struct Config: Sendable {
         self.controlPlanePubkeyB64 = controlPlanePubkeyB64
         self.controlPlanePubkeyNextB64 = controlPlanePubkeyNextB64
         self.audience = audience
-        self.requireE2E = requireE2E
-        self.e2eAsserted = e2eAsserted
         self.pairTimeoutSecs = pairTimeoutSecs
         self.maxFrameBytes = maxFrameBytes
         self.maxSessionBytes = maxSessionBytes
@@ -51,10 +45,6 @@ public struct Config: Sendable {
         let env = ProcessInfo.processInfo.environment
         func str(_ k: String) -> String? { env[k] }
         func intOr(_ k: String, _ d: Int) -> Int { env[k].flatMap { Int($0) } ?? d }
-        func boolOr(_ k: String, _ d: Bool) -> Bool {
-            guard let v = env[k]?.lowercased() else { return d }
-            return ["1", "true", "yes", "on"].contains(v)
-        }
 
         let pubkey = str("ROUTER_CONTROL_PLANE_PUBKEY")
         if pubkey == nil {
@@ -74,8 +64,6 @@ public struct Config: Sendable {
             controlPlanePubkeyB64: pubkey,
             controlPlanePubkeyNextB64: str("ROUTER_CONTROL_PLANE_PUBKEY_NEXT"),
             audience: str("ROUTER_AUDIENCE") ?? "fantastic.relay",
-            requireE2E: boolOr("ROUTER_REQUIRE_E2E", true),
-            e2eAsserted: boolOr("ROUTER_E2E_ASSERTED", false),
             pairTimeoutSecs: intOr("ROUTER_PAIR_TIMEOUT_SECS", 30),
             maxFrameBytes: intOr("ROUTER_MAX_FRAME_BYTES", 16 << 20),
             maxSessionBytes: intOr("ROUTER_MAX_SESSION_BYTES", 50 << 30),

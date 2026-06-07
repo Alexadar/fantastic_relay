@@ -4,10 +4,6 @@ import NIOHTTP1
 import NIOPosix
 import NIOWebSocket
 
-private func warn(_ s: String) {
-    FileHandle.standardError.write(Data((s + "\n").utf8))
-}
-
 /// A running server: the app supervises lifetime through this handle.
 public final class RelayServerHandle: @unchecked Sendable {
     public let channel: Channel
@@ -47,27 +43,12 @@ public final class RelayServer: @unchecked Sendable {
     private var pending: [ObjectIdentifier: Claims] = [:]
 
     public init(config: Config) throws {
-        // E2E launch-gate — mirrors the Rust gate.
-        if config.requireE2E && !config.e2eAsserted {
-            throw RelayError.config(
-                "refusing to launch: ROUTER_REQUIRE_E2E is set but ROUTER_E2E_ASSERTED is not. "
-                    + "The endpoints have no end-to-end encryption yet, so carrying production "
-                    + "traffic would expose plaintext to this relay. Set ROUTER_E2E_ASSERTED=true "
-                    + "only once cloud_bridge ships end-to-end encryption, or ROUTER_REQUIRE_E2E=false for non-prod."
-            )
-        }
         self.config = config
         self.verifier = try Ed25519Verifier(config: config)
         self.meter = StdoutMeter()
         self.rendezvous = Rendezvous(
             meter: meter, pairTimeout: .seconds(Int64(config.pairTimeoutSecs)))
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-
-        if !config.e2eAsserted {
-            warn(
-                "PLAINTEXT MODE: payloads are NOT end-to-end encrypted; a relay/tunnel compromise "
-                    + "leaks full content. Do not carry production traffic.")
-        }
     }
 
     public func start() throws -> RelayServerHandle {
