@@ -16,19 +16,14 @@ pub struct Config {
     pub listen_addr: String,
 
     /// Base64 (std) Ed25519 public key of the control-plane token issuer
-    /// (current). Public material only. Required when `require_auth`.
+    /// (current). Public material only. Always required.
     pub control_plane_pubkey_b64: Option<String>,
     /// Optional NEXT issuer key, accepted during a rotation overlap window.
     pub control_plane_pubkey_next_b64: Option<String>,
 
     /// Expected token audience (`aud`) — this relay's id. Hard-rejected on
-    /// mismatch when `require_auth`.
+    /// mismatch.
     pub audience: String,
-
-    /// STRICT by default: a missing/invalid token aborts the WS handshake
-    /// pre-upgrade (HTTP 401). `false` is a dev-only parse-without-verify mode
-    /// for `relay-probe`/tests — explicit opt-in, emits a loud warning.
-    pub require_auth: bool,
 
     /// When true (default), the router refuses to launch unless the operator
     /// asserts the endpoints are E2E-capable (`e2e_asserted`). When false, it
@@ -84,12 +79,10 @@ fn env_bool(key: &str, default: bool) -> bool {
 
 impl Config {
     pub fn from_env() -> Result<Self, RouterError> {
-        let require_auth = env_bool("ROUTER_REQUIRE_AUTH", true);
-
         let control_plane_pubkey_b64 = std::env::var("ROUTER_CONTROL_PLANE_PUBKEY").ok();
-        if require_auth && control_plane_pubkey_b64.is_none() {
+        if control_plane_pubkey_b64.is_none() {
             return Err(RouterError::Config(
-                "ROUTER_CONTROL_PLANE_PUBKEY is required when ROUTER_REQUIRE_AUTH is true".into(),
+                "ROUTER_CONTROL_PLANE_PUBKEY is required".into(),
             ));
         }
 
@@ -99,7 +92,6 @@ impl Config {
             control_plane_pubkey_b64,
             control_plane_pubkey_next_b64: std::env::var("ROUTER_CONTROL_PLANE_PUBKEY_NEXT").ok(),
             audience: std::env::var("ROUTER_AUDIENCE").unwrap_or_else(|_| "fantastic.relay".into()),
-            require_auth,
             require_e2e: env_bool("ROUTER_REQUIRE_E2E", true),
             e2e_asserted: env_bool("ROUTER_E2E_ASSERTED", false),
             pair_timeout_secs: env_or("ROUTER_PAIR_TIMEOUT_SECS", 30),
@@ -132,7 +124,6 @@ impl std::fmt::Debug for Config {
                     .map(|_| "<redacted>"),
             )
             .field("audience", &self.audience)
-            .field("require_auth", &self.require_auth)
             .field("require_e2e", &self.require_e2e)
             .field("e2e_asserted", &self.e2e_asserted)
             .field("pair_timeout_secs", &self.pair_timeout_secs)

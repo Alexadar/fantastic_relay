@@ -5,8 +5,7 @@
 //! and pair the connection. A forged token fails verification.
 //!
 //! Token wire form: `<b64url-nopad(claims_json)>.<b64url-nopad(ed25519_sig)>`
-//! where the signature is over the raw `claims_json` bytes. In dev mode
-//! (`require_auth = false`) the signature segment is optional and not checked.
+//! where the signature is over the raw `claims_json` bytes.
 
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -35,7 +34,7 @@ pub struct Claims {
     /// requires it to match the other's `peer_id` (anti-hijack, pre-E2E).
     #[serde(default)]
     pub partner_peer_id: String,
-    /// Audience — must equal this relay's id (`require_auth`).
+    /// Audience — must equal this relay's id.
     #[serde(default)]
     pub aud: String,
     /// Issued-at (unix seconds).
@@ -61,7 +60,6 @@ pub trait TokenVerifier: Send + Sync {
 pub struct Ed25519Verifier {
     keys: Vec<VerifyingKey>,
     audience: String,
-    require_auth: bool,
     token_max_lifetime_secs: u64,
     /// Single-use jti cache → expiry (unix secs); pruned lazily.
     seen_jti: DashMap<String, u64>,
@@ -95,15 +93,14 @@ impl Ed25519Verifier {
         if let Some(k) = &config.control_plane_pubkey_next_b64 {
             keys.push(decode_key(k)?);
         }
-        if config.require_auth && keys.is_empty() {
+        if keys.is_empty() {
             return Err(RouterError::Config(
-                "no control-plane pubkey configured but auth is required".into(),
+                "no control-plane pubkey configured".into(),
             ));
         }
         Ok(Self {
             keys,
             audience: config.audience.clone(),
-            require_auth: config.require_auth,
             token_max_lifetime_secs: config.token_max_lifetime_secs,
             seen_jti: DashMap::new(),
         })
@@ -133,11 +130,6 @@ impl TokenVerifier for Ed25519Verifier {
             .map_err(|_| RouterError::Auth("malformed token".into()))?;
         let claims: Claims = serde_json::from_slice(&payload)
             .map_err(|_| RouterError::Auth("malformed claims".into()))?;
-
-        if !self.require_auth {
-            // Dev parse-only mode: no signature/exp/aud/jti enforcement.
-            return Ok(claims);
-        }
 
         // Signature (detached, over the raw claims_json bytes), verify_strict.
         let sig_bytes = URL_SAFE_NO_PAD

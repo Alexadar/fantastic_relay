@@ -7,10 +7,9 @@ import XCTest
 final class AuthTests: XCTestCase {
     private let signing = Curve25519.Signing.PrivateKey()
 
-    private func verifier(requireAuth: Bool = true) throws -> Ed25519Verifier {
+    private func verifier() throws -> Ed25519Verifier {
         let config = Config(
-            controlPlanePubkeyB64: signing.publicKey.rawRepresentation.base64EncodedString(),
-            requireAuth: requireAuth
+            controlPlanePubkeyB64: signing.publicKey.rawRepresentation.base64EncodedString()
         )
         return try Ed25519Verifier(config: config)
     }
@@ -85,13 +84,6 @@ final class AuthTests: XCTestCase {
         let sig = try other.signature(for: payload)
         let t = Base64URL.encode(payload) + "." + Base64URL.encode(Data(sig))
         XCTAssertThrowsVerdict(v.verify(t))
-    }
-
-    func testDevModeParsesUnsigned() throws {
-        let v = try verifier(requireAuth: false)
-        let payload = try JSONEncoder().encode(validClaims())
-        let t = Base64URL.encode(payload)  // no signature segment
-        if case .failure(let e) = v.verify(t) { XCTFail("dev mode should parse, got \(e)") }
     }
 
     private func XCTAssertThrowsVerdict(_ r: Result<Claims, RelayError>) {

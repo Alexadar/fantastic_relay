@@ -1,5 +1,6 @@
-//! Integration tests: two real WS clients pair through the router and
-//! round-trip opaque frames — proving the router with NO `cloud_bridge`.
+//! Integration tests: two real WS clients pair through the router and round-trip
+//! opaque frames — proving the router with NO `cloud_bridge`. Auth is always on,
+//! so every leg presents a signed token.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -21,13 +22,17 @@ use fantastic_router::config::{Config, SUBPROTOCOL};
 use fantastic_router::meter::StdoutMeter;
 use fantastic_router::rendezvous::InMemoryRendezvous;
 
-fn base_config() -> Config {
+struct Harness {
+    addr: SocketAddr,
+    signing: SigningKey,
+}
+
+fn config_for(pubkey_b64: String) -> Config {
     Config {
         listen_addr: "127.0.0.1:0".into(),
-        control_plane_pubkey_b64: None,
+        control_plane_pubkey_b64: Some(pubkey_b64),
         control_plane_pubkey_next_b64: None,
         audience: "fantastic.relay".into(),
-        require_auth: false,
         require_e2e: false,
         e2e_asserted: true,
         pair_timeout_secs: 3,
@@ -42,45 +47,61 @@ fn base_config() -> Config {
     }
 }
 
-async fn spawn_router(config: Config) -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let config = Arc::new(config);
+async fn spawn() -> Harness {
+    let mut seed = [0u8; 32];
+    getrandom::getrandom(&mut seed).unwrap();
+    let signing = SigningKey::from_bytes(&seed);
+    let pubkey_b64 = STANDARD.encode(signing.verifying_key().to_bytes());
+
+    let config = Arc::new(config_for(pubkey_b64));
     let verifier = Arc::new(Ed25519Verifier::from_config(&config).unwrap());
     let rendezvous = Arc::new(InMemoryRendezvous::from_config(&config));
     let meter = Arc::new(StdoutMeter::new());
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
     let (sh_tx, sh_rx) = watch::channel(false);
     tokio::spawn(async move {
-        // Keep the sender alive so the drain path (changed()) never fires in-test.
-        let _keep = sh_tx;
+        let _keep = sh_tx; // keep the drain channel open in-test
         let _ =
             fantastic_router::ws::accept_loop(listener, config, verifier, rendezvous, meter, sh_rx)
                 .await;
     });
-    addr
+    Harness { addr, signing }
 }
 
-fn dev_token(tenant: &str, peer: &str, partner: &str, rv: &str) -> String {
+fn sign_token(signing: &SigningKey, peer: &str, partner: &str, rv: &str) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut nonce = [0u8; 8];
+    getrandom::getrandom(&mut nonce).unwrap();
     let claims = Claims {
-        tenant_id: tenant.into(),
+        tenant_id: "t1".into(),
         peer_id: peer.into(),
         rendezvous: rv.into(),
         partner_peer_id: partner.into(),
         aud: "fantastic.relay".into(),
-        iat: 0,
+        iat: now,
         nbf: 0,
-        exp: 9_999_999_999,
-        jti: String::new(),
+        exp: now + 60,
+        jti: format!("{peer}-{rv}-{}", URL_SAFE_NO_PAD.encode(nonce)),
     };
-    URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap())
+    let payload = serde_json::to_vec(&claims).unwrap();
+    let sig = signing.sign(&payload);
+    format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(&payload),
+        URL_SAFE_NO_PAD.encode(sig.to_bytes())
+    )
 }
 
 type Client =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 async fn connect(addr: SocketAddr, token: &str) -> Result<Client, WsError> {
-    let url = format!("ws://{addr}/");
-    let mut req = url.into_client_request().unwrap();
+    let mut req = format!("ws://{addr}/").into_client_request().unwrap();
     req.headers_mut().append(
         "Sec-WebSocket-Protocol",
         HeaderValue::from_str(&format!("{SUBPROTOCOL}, {token}")).unwrap(),
@@ -100,14 +121,13 @@ where
 }
 
 #[tokio::test]
-async fn dev_pairs_two_clients_and_forwards_both_opcodes() {
-    let addr = spawn_router(base_config()).await;
-
-    let mut a = connect(addr, &dev_token("t1", "A", "B", "rv-1"))
+async fn pairs_two_clients_and_forwards_both_opcodes() {
+    let h = spawn().await;
+    let mut a = connect(h.addr, &sign_token(&h.signing, "A", "B", "rv-1"))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await; // A registers first
-    let mut b = connect(addr, &dev_token("t1", "B", "A", "rv-1"))
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let mut b = connect(h.addr, &sign_token(&h.signing, "B", "A", "rv-1"))
         .await
         .unwrap();
 
@@ -119,15 +139,13 @@ async fn dev_pairs_two_clients_and_forwards_both_opcodes() {
 }
 
 #[tokio::test]
-async fn dev_rejects_self_pair() {
-    let addr = spawn_router(base_config()).await;
-
-    // Same peer_id on both legs of the same rendezvous → the second is rejected.
-    let _a = connect(addr, &dev_token("t1", "A", "", "rv-self"))
+async fn rejects_self_pair() {
+    let h = spawn().await;
+    let _a = connect(h.addr, &sign_token(&h.signing, "A", "", "rv-self"))
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
-    let mut a2 = connect(addr, &dev_token("t1", "A", "", "rv-self"))
+    let mut a2 = connect(h.addr, &sign_token(&h.signing, "A", "", "rv-self"))
         .await
         .unwrap();
 
@@ -138,91 +156,15 @@ async fn dev_rejects_self_pair() {
 }
 
 #[tokio::test]
-async fn strict_pairs_with_signed_tokens() {
-    let mut sk = [0u8; 32];
-    getrandom::getrandom(&mut sk).unwrap();
-    let signing = SigningKey::from_bytes(&sk);
-    let pub_b64 = STANDARD.encode(signing.verifying_key().to_bytes());
-
-    let mut config = base_config();
-    config.require_auth = true;
-    config.control_plane_pubkey_b64 = Some(pub_b64);
-    let addr = spawn_router(config).await;
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let sign = |peer: &str, partner: &str| -> String {
-        let claims = Claims {
-            tenant_id: "t1".into(),
-            peer_id: peer.into(),
-            rendezvous: "rv-strict".into(),
-            partner_peer_id: partner.into(),
-            aud: "fantastic.relay".into(),
-            iat: now,
-            nbf: 0,
-            exp: now + 60,
-            jti: format!("jti-{peer}"),
-        };
-        let payload = serde_json::to_vec(&claims).unwrap();
-        let sig = signing.sign(&payload);
-        format!(
-            "{}.{}",
-            URL_SAFE_NO_PAD.encode(&payload),
-            URL_SAFE_NO_PAD.encode(sig.to_bytes())
-        )
-    };
-
-    let mut a = connect(addr, &sign("A", "B")).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    let mut b = connect(addr, &sign("B", "A")).await.unwrap();
-
-    a.send(Message::Binary(b"secret".to_vec())).await.unwrap();
-    assert_eq!(next_msg(&mut b).await, Message::Binary(b"secret".to_vec()));
-}
-
-#[tokio::test]
-async fn strict_rejects_bad_token() {
-    let mut sk = [0u8; 32];
-    getrandom::getrandom(&mut sk).unwrap();
-    let signing = SigningKey::from_bytes(&sk);
-    let pub_b64 = STANDARD.encode(signing.verifying_key().to_bytes());
-
-    let mut config = base_config();
-    config.require_auth = true;
-    config.control_plane_pubkey_b64 = Some(pub_b64);
-    let addr = spawn_router(config).await;
-
+async fn rejects_bad_token() {
+    let h = spawn().await;
     // A token signed by a DIFFERENT key → verification fails → 401 pre-upgrade.
     let mut other = [0u8; 32];
     getrandom::getrandom(&mut other).unwrap();
     let wrong = SigningKey::from_bytes(&other);
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let claims = Claims {
-        tenant_id: "t1".into(),
-        peer_id: "A".into(),
-        rendezvous: "rv-x".into(),
-        partner_peer_id: "B".into(),
-        aud: "fantastic.relay".into(),
-        iat: now,
-        nbf: 0,
-        exp: now + 60,
-        jti: "j".into(),
-    };
-    let payload = serde_json::to_vec(&claims).unwrap();
-    let sig = wrong.sign(&payload);
-    let token = format!(
-        "{}.{}",
-        URL_SAFE_NO_PAD.encode(&payload),
-        URL_SAFE_NO_PAD.encode(sig.to_bytes())
-    );
-
+    let token = sign_token(&wrong, "A", "B", "rv-x");
     assert!(
-        connect(addr, &token).await.is_err(),
+        connect(h.addr, &token).await.is_err(),
         "bad token must be rejected pre-upgrade"
     );
 }

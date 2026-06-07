@@ -100,16 +100,15 @@ Key environment variables (see [`rust/src/config.rs`](rust/src/config.rs)):
 | Var | Default | Meaning |
 |---|---|---|
 | `ROUTER_LISTEN_ADDR` | `127.0.0.1:9443` | loopback bind; a tunnel/proxy terminates TLS in front |
-| `ROUTER_CONTROL_PLANE_PUBKEY` | — | base64 Ed25519 public key of the token issuer (required when auth on) |
-| `ROUTER_REQUIRE_AUTH` | `true` | strict: missing/invalid token → 401 pre-upgrade. `false` = dev-only |
+| `ROUTER_CONTROL_PLANE_PUBKEY` | — | base64 Ed25519 public key of the token issuer (always required) |
 | `ROUTER_REQUIRE_E2E` | `true` | refuse to launch in prod unless `ROUTER_E2E_ASSERTED=true` |
 | `ROUTER_AUDIENCE` | `fantastic.relay` | expected token `aud` |
 | `ROUTER_MAX_FRAME_BYTES` | `16777216` | 16 MiB — matches the endpoints' max message size |
 | `ROUTER_PAIR_TIMEOUT_SECS` | `30` | how long a half-open connection waits for its pair |
 
 A standalone `relay-probe` binary (a minimal WS test client) lets you exercise
-pairing without the real endpoint transport — run two probes (with
-`ROUTER_REQUIRE_AUTH=false`) and watch opaque frames round-trip.
+pairing without the real endpoint transport — mint tokens with `fantastic-issue`
+and run two probes (`PROBE_TOKEN=…`) that pair and round-trip opaque frames.
 
 ## Expose via your own tunnel
 

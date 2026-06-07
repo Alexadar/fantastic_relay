@@ -86,7 +86,6 @@ impl Relay {
             .env("ROUTER_LISTEN_ADDR", addr.to_string())
             .env("ROUTER_CONTROL_PLANE_PUBKEY", issuer.pubkey_b64())
             .env("ROUTER_AUDIENCE", AUDIENCE)
-            .env("ROUTER_REQUIRE_AUTH", "true")
             .env("ROUTER_REQUIRE_E2E", "false")
             .env("ROUTER_E2E_ASSERTED", "true")
             .env("ROUTER_PAIR_TIMEOUT_SECS", "2")

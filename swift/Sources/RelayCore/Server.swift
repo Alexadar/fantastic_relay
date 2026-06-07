@@ -67,11 +67,6 @@ public final class RelayServer: @unchecked Sendable {
                 "PLAINTEXT MODE: payloads are NOT end-to-end encrypted; a relay/tunnel compromise "
                     + "leaks full content. Do not carry production traffic.")
         }
-        if !config.requireAuth {
-            warn(
-                "DEV MODE: ROUTER_REQUIRE_AUTH=false — tokens are parsed but NOT verified. "
-                    + "Never run this in production.")
-        }
     }
 
     public func start() throws -> RelayServerHandle {

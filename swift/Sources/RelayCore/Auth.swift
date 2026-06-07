@@ -16,7 +16,6 @@ private func nowUnix() -> UInt64 {
 public final class Ed25519Verifier: @unchecked Sendable {
     private let keys: [Curve25519.Signing.PublicKey]
     private let audience: String
-    private let requireAuth: Bool
     private let tokenMaxLifetimeSecs: UInt64
     private let lock = NSLock()
     private var seenJti: Set<String> = []
@@ -34,12 +33,11 @@ public final class Ed25519Verifier: @unchecked Sendable {
                 throw RelayError.config("control-plane pubkey is not a valid Ed25519 key")
             }
         }
-        if config.requireAuth && keys.isEmpty {
-            throw RelayError.config("no control-plane pubkey configured but auth is required")
+        if keys.isEmpty {
+            throw RelayError.config("no control-plane pubkey configured")
         }
         self.keys = keys
         self.audience = config.audience
-        self.requireAuth = config.requireAuth
         self.tokenMaxLifetimeSecs = UInt64(config.tokenMaxLifetimeSecs)
     }
 
@@ -56,11 +54,6 @@ public final class Ed25519Verifier: @unchecked Sendable {
             claims = try JSONDecoder().decode(Claims.self, from: payload)
         } catch {
             return .failure(.auth("malformed claims"))
-        }
-
-        if !requireAuth {
-            // Dev parse-only mode: no signature/exp/aud/jti enforcement.
-            return .success(claims)
         }
 
         // Signature (detached, over the raw claims_json bytes).

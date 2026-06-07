@@ -11,14 +11,10 @@ self-hosted path.
 cd rust
 cargo build --release
 
-# Dev / local testing (auth + E2E gates relaxed — NEVER production):
-ROUTER_REQUIRE_AUTH=false ROUTER_REQUIRE_E2E=false \
-  ROUTER_LISTEN_ADDR=127.0.0.1:9443 \
-  ./target/release/fantastic-router
-
-# Production posture (strict): supply the control-plane public key and assert
-# that the endpoints carry their own end-to-end encryption.
-ROUTER_CONTROL_PLANE_PUBKEY=<base64-ed25519-pubkey> \
+# One-time: generate a control-plane keypair (auth is ALWAYS on).
+eval "$(./target/release/fantastic-issue keygen | grep -v '^#')"
+# Run the router with the verifier public key.
+ROUTER_CONTROL_PLANE_PUBKEY="$ROUTER_CONTROL_PLANE_PUBKEY" \
   ROUTER_E2E_ASSERTED=true \
   ROUTER_LISTEN_ADDR=127.0.0.1:9443 \
   ./target/release/fantastic-router
@@ -60,17 +56,18 @@ between self-hosted (your tunnel) and a managed/paid endpoint — same router.
 
 ## 4. Smoke-test with `relay-probe`
 
-With the router running in dev mode (`ROUTER_REQUIRE_AUTH=false`), pair two
-probes through it:
+Mint a token per peer with `fantastic-issue` (uses the `RELAY_SIGNING_KEY` from
+the keygen above; pick any `RELAY_PASSWORD`), then run two probes:
 
 ```sh
-# terminal A (listener)
-PROBE_URL=ws://127.0.0.1:9443/ PROBE_PEER=A PROBE_PARTNER=B PROBE_RV=demo \
-  ./target/release/relay-probe
+export RELAY_PASSWORD=hunter2
+A=$(./target/release/fantastic-issue token --password hunter2 --peer A --partner B --rendezvous demo)
+B=$(./target/release/fantastic-issue token --password hunter2 --peer B --partner A --rendezvous demo)
 
+# terminal A (listener)
+PROBE_URL=ws://127.0.0.1:9443/ PROBE_TOKEN="$A" ./target/release/relay-probe
 # terminal B (sender)
-PROBE_URL=ws://127.0.0.1:9443/ PROBE_PEER=B PROBE_PARTNER=A PROBE_RV=demo \
-  PROBE_SEND="hello from B" ./target/release/relay-probe
+PROBE_URL=ws://127.0.0.1:9443/ PROBE_TOKEN="$B" PROBE_SEND="hi" ./target/release/relay-probe
 ```
 
 Terminal A prints the opaque frame forwarded from B — the relay paired them and

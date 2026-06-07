@@ -71,12 +71,6 @@ fn preflight(config: &Config) -> anyhow::Result<()> {
              leaks full content. Do not carry production traffic."
         );
     }
-    if !config.require_auth {
-        tracing::warn!(
-            "DEV MODE: ROUTER_REQUIRE_AUTH=false — tokens are parsed but NOT verified. \
-             Never run this in production."
-        );
-    }
     Ok(())
 }
 

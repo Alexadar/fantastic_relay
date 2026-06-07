@@ -32,9 +32,8 @@ Sec-WebSocket-Protocol: fantastic.relay.v1, <base64url-nopad(token)>
 `<base64url-nopad(claims_json)>.<base64url-nopad(ed25519_sig)>`
 
 The signature is a detached Ed25519 signature over the **raw `claims_json`
-bytes**, verifiable with the control plane's published public key. (Dev mode,
-`ROUTER_REQUIRE_AUTH=false`, accepts the claims segment alone, unsigned — for
-`relay-probe`/testing only.)
+bytes**, verifiable with the control plane's published public key. Auth is
+always required — there is no unsigned/dev mode.
 
 ### Claims
 

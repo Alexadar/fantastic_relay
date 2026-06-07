@@ -11,7 +11,6 @@ public struct Config: Sendable {
     public var controlPlanePubkeyB64: String?
     public var controlPlanePubkeyNextB64: String?
     public var audience: String
-    public var requireAuth: Bool
     public var requireE2E: Bool
     public var e2eAsserted: Bool
     public var pairTimeoutSecs: Int
@@ -26,7 +25,6 @@ public struct Config: Sendable {
         controlPlanePubkeyB64: String? = nil,
         controlPlanePubkeyNextB64: String? = nil,
         audience: String = "fantastic.relay",
-        requireAuth: Bool = true,
         requireE2E: Bool = true,
         e2eAsserted: Bool = false,
         pairTimeoutSecs: Int = 30,
@@ -40,7 +38,6 @@ public struct Config: Sendable {
         self.controlPlanePubkeyB64 = controlPlanePubkeyB64
         self.controlPlanePubkeyNextB64 = controlPlanePubkeyNextB64
         self.audience = audience
-        self.requireAuth = requireAuth
         self.requireE2E = requireE2E
         self.e2eAsserted = e2eAsserted
         self.pairTimeoutSecs = pairTimeoutSecs
@@ -59,11 +56,9 @@ public struct Config: Sendable {
             return ["1", "true", "yes", "on"].contains(v)
         }
 
-        let requireAuth = boolOr("ROUTER_REQUIRE_AUTH", true)
         let pubkey = str("ROUTER_CONTROL_PLANE_PUBKEY")
-        if requireAuth && pubkey == nil {
-            throw RelayError.config(
-                "ROUTER_CONTROL_PLANE_PUBKEY is required when ROUTER_REQUIRE_AUTH is true")
+        if pubkey == nil {
+            throw RelayError.config("ROUTER_CONTROL_PLANE_PUBKEY is required")
         }
 
         var host = "127.0.0.1"
@@ -79,7 +74,6 @@ public struct Config: Sendable {
             controlPlanePubkeyB64: pubkey,
             controlPlanePubkeyNextB64: str("ROUTER_CONTROL_PLANE_PUBKEY_NEXT"),
             audience: str("ROUTER_AUDIENCE") ?? "fantastic.relay",
-            requireAuth: requireAuth,
             requireE2E: boolOr("ROUTER_REQUIRE_E2E", true),
             e2eAsserted: boolOr("ROUTER_E2E_ASSERTED", false),
             pairTimeoutSecs: intOr("ROUTER_PAIR_TIMEOUT_SECS", 30),
