@@ -21,7 +21,10 @@ final class Rendezvous: @unchecked Sendable {
         let claims: Claims
         let deliver: (Channel, Session, Direction) -> Void
         var timeout: Scheduled<Void>?
-        init(channel: Channel, claims: Claims, deliver: @escaping (Channel, Session, Direction) -> Void) {
+        init(
+            channel: Channel, claims: Claims,
+            deliver: @escaping (Channel, Session, Direction) -> Void
+        ) {
             self.channel = channel
             self.claims = claims
             self.deliver = deliver

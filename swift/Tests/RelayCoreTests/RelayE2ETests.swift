@@ -42,12 +42,16 @@
 
             // A → B
             try await a.send(.data(Data("ping".utf8)))
-            guard case .data(let got1) = try await b.receive() else { return XCTFail("expected data") }
+            guard case .data(let got1) = try await b.receive() else {
+                return XCTFail("expected data")
+            }
             XCTAssertEqual(got1, Data("ping".utf8))
 
             // B → A
             try await b.send(.string("pong"))
-            guard case .string(let got2) = try await a.receive() else { return XCTFail("expected text") }
+            guard case .string(let got2) = try await a.receive() else {
+                return XCTFail("expected text")
+            }
             XCTAssertEqual(got2, "pong")
 
             a.cancel(with: .goingAway, reason: nil)

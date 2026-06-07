@@ -53,7 +53,8 @@ public final class RelayServer: @unchecked Sendable {
                 "refusing to launch: ROUTER_REQUIRE_E2E is set but ROUTER_E2E_ASSERTED is not. "
                     + "The endpoints have no end-to-end encryption yet, so carrying production "
                     + "traffic would expose plaintext to this relay. Set ROUTER_E2E_ASSERTED=true "
-                    + "only once cloud_bridge ships end-to-end encryption, or ROUTER_REQUIRE_E2E=false for non-prod.")
+                    + "only once cloud_bridge ships end-to-end encryption, or ROUTER_REQUIRE_E2E=false for non-prod."
+            )
         }
         self.config = config
         self.verifier = try Ed25519Verifier(config: config)
@@ -124,9 +125,10 @@ public final class RelayServer: @unchecked Sendable {
         let upgradeConfig: NIOHTTPServerUpgradeConfiguration = (
             upgraders: [upgrader], completionHandler: { _ in }
         )
-        return channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig).flatMap {
-            channel.pipeline.addHandler(notFound)
-        }
+        return channel.pipeline.configureHTTPServerPipeline(withServerUpgrade: upgradeConfig)
+            .flatMap {
+                channel.pipeline.addHandler(notFound)
+            }
     }
 
     /// Extract + verify the token from the `Sec-WebSocket-Protocol` header.

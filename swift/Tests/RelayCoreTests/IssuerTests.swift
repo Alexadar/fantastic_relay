@@ -45,7 +45,8 @@ final class IssuerTests: XCTestCase {
             signing: signing, audience: "fantastic.relay", tokenTTLSecs: 60,
             providers: [PasswordProvider(password: "pw", tenantId: "t1")])
         let token = try iss.issue(
-            provider: "password", credential: "pw", peerId: "A", partnerPeerId: "B", rendezvous: "rv")
+            provider: "password", credential: "pw", peerId: "A", partnerPeerId: "B",
+            rendezvous: "rv")
 
         let verifier = try Ed25519Verifier(config: Config(controlPlanePubkeyB64: iss.publicKeyB64))
         guard case .success(let claims) = verifier.verify(token) else {

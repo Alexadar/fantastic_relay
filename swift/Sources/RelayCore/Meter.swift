@@ -70,7 +70,8 @@ public final class StdoutMeter: Meter, @unchecked Sendable {
     }
 
     public func record(_ event: UsageEvent) {
-        if let data = try? JSONEncoder().encode(event), let s = String(data: data, encoding: .utf8) {
+        if let data = try? JSONEncoder().encode(event), let s = String(data: data, encoding: .utf8)
+        {
             print(s)
         }
     }

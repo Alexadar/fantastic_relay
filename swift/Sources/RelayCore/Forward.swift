@@ -124,7 +124,8 @@ final class ConnectionHandler: ChannelInboundHandler {
                 forward(frame)
             }
         case .ping:
-            let pong = WebSocketFrame(fin: true, opcode: .pong, maskKey: nil, data: frame.unmaskedData)
+            let pong = WebSocketFrame(
+                fin: true, opcode: .pong, maskKey: nil, data: frame.unmaskedData)
             context.writeAndFlush(wrapOutboundOut(pong), promise: nil)
         case .pong:
             break

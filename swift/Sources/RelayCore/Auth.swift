@@ -24,7 +24,8 @@ public final class Ed25519Verifier: @unchecked Sendable {
         var keys: [Curve25519.Signing.PublicKey] = []
         for b64 in [config.controlPlanePubkeyB64, config.controlPlanePubkeyNextB64] {
             guard let b64 else { continue }
-            guard let raw = Data(base64Encoded: b64.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            guard let raw = Data(base64Encoded: b64.trimmingCharacters(in: .whitespacesAndNewlines))
+            else {
                 throw RelayError.config("control-plane pubkey is not valid base64")
             }
             do {

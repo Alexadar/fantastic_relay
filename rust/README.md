@@ -8,8 +8,9 @@ this 1:1 and is held equivalent by [`../conformance`](../conformance).
 
 ## Layout
 
-- `src/` — `auth`, `rendezvous`, `forward`, `meter`, `ws`, `config`, `error`, `lib`.
-- Binaries: **`fantastic-router`** (the relay), **`relay-probe`** (a WS test client).
+- `src/` — `auth`, `issuer`, `rendezvous`, `forward`, `meter`, `ws`, `config`, `error`, `lib`.
+- Binaries: **`fantastic-router`** (the relay), **`fantastic-issue`** (control-plane
+  keygen + token minter), **`relay-probe`** (a WS test client).
 - `tests/relay_pairing.rs` — integration tests (pair + opaque round-trip + negatives).
 
 ## Build & test
