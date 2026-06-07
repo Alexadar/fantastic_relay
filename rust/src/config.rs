@@ -32,8 +32,9 @@ pub struct Config {
 
     /// When true (default), the router refuses to launch unless the operator
     /// asserts the endpoints are E2E-capable (`e2e_asserted`). When false, it
-    /// launches with a loud plaintext warning. Until `cloud_bridge` ships Noise
-    /// E2E, payloads are plaintext and a relay compromise leaks full content.
+    /// launches with a loud plaintext warning. Until `cloud_bridge` ships
+    /// end-to-end encryption, payloads are plaintext and a relay compromise
+    /// leaks full content.
     pub require_e2e: bool,
     /// Operator assertion that the endpoints carry their own E2E layer.
     pub e2e_asserted: bool,

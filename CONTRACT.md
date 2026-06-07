@@ -80,10 +80,12 @@ unused. The control plane issues **both** peers a token carrying the **same**
 ## 5. Client obligations (E2E + heartbeat) — REQUIRED for production
 
 1. **End-to-end encryption.** The relay sees only ciphertext **iff the endpoints
-   encrypt**. Clients MUST run a peer-to-peer encryption layer (Noise, keyed on
-   the `peer_id` Ed25519 identities) so a relay/tunnel compromise leaks only
-   ciphertext. Until this ships, the router runs in a plaintext, non-production
-   posture (`ROUTER_REQUIRE_E2E`).
+   encrypt**. Clients MUST run a peer-to-peer end-to-end encryption layer — e.g.
+   **TLS 1.3 mutual auth** (self-signed certs pinned to the device identity keys)
+   or Noise — bound to the `peer_id` identities, so a relay/tunnel compromise
+   leaks only ciphertext. **The relay is agnostic to the mechanism**: it forwards
+   the encrypted bytes as opaque frames and never inspects them. Until this ships,
+   the router runs in a plaintext, non-production posture (`ROUTER_REQUIRE_E2E`).
 2. **Application heartbeat.** A CDN/edge in front of the relay may close idle
    WebSockets (~100 s). Clients MUST emit an ordinary data frame every 30–60 s
    (the relay forwards it verbatim) to keep a quiet session alive — a WS Ping is

@@ -65,7 +65,7 @@ transport sends **plaintext JSON** — there is no peer end-to-end layer yet
 relay compromise leaks full content. The router therefore ships a
 `ROUTER_REQUIRE_E2E` launch-gate: in production it **refuses to launch** unless
 the operator asserts the endpoints are E2E-capable; otherwise it emits a loud
-plaintext warning. **Do not carry production traffic before the endpoint Noise
+plaintext warning. **Do not carry production traffic before the endpoint E2E
 layer + application heartbeat land.**
 
 Strict auth: a missing or invalid token **aborts the WebSocket handshake
@@ -137,7 +137,7 @@ client) targets — see [`CONTRACT.md`](CONTRACT.md).
 ## Status
 
 Alpha. The router (auth → pairing → opaque forward → metering) is the focus;
-`cloud_bridge` (the kernel-side transport that adds Noise E2E, peer-approval,
+`cloud_bridge` (the kernel-side transport that adds E2E encryption (TLS 1.3 mTLS), peer-approval,
 the application heartbeat, and the router-URL field) follows in
 [fantastic_canvas](https://github.com/Alexadar/fantastic_canvas) once this router
 reaches minimal maturity.
