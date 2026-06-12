@@ -35,17 +35,17 @@ public final class RelayServer: @unchecked Sendable {
     public let config: Config
     let verifier: Ed25519Verifier
     let rendezvous: Rendezvous
-    let meter: StdoutMeter
+    let meter: Meter
     private let group: MultiThreadedEventLoopGroup
 
     // Captured Claims handed from shouldUpgrade to upgradePipelineHandler.
     private let pendingLock = NSLock()
     private var pending: [ObjectIdentifier: Claims] = [:]
 
-    public init(config: Config) throws {
+    public init(config: Config, meter: Meter = StdoutMeter()) throws {
         self.config = config
         self.verifier = try Ed25519Verifier(config: config)
-        self.meter = StdoutMeter()
+        self.meter = meter
         self.rendezvous = Rendezvous(
             meter: meter, pairTimeout: .seconds(Int64(config.pairTimeoutSecs)))
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)

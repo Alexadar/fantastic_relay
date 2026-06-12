@@ -1,0 +1,81 @@
+name: FantasticRelay
+options:
+  bundleIdPrefix: oleksandr.aisixteen.fantastic
+  deploymentTarget:
+    macOS: "26.0"
+  developmentLanguage: en
+  # Xcode 26 Icon Composer packages are single-file resources, not directories
+  # to expand. Mirrors fantastic_app.
+  fileTypes:
+    icon:
+      file: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "LSKNNBG94G"
+
+# Operator-side macOS app: runs the relay (RelayCore) in-process, is the
+# control plane (holds the issuer signing key + password), and runs a
+# pre-configured cloudflared NAMED tunnel. Unsandboxed Developer-ID (spawns
+# cloudflared + binds a loopback socket) — NOT Mac App Store. RelayCore is a
+# path package; Xcode keys it by manifest name "RelayCore" so the ../swift
+# directory-basename collision (canvas vs relay both named "swift") never bites.
+packages:
+  RelayCore:
+    path: ../swift
+
+targets:
+  FantasticRelay:
+    type: application
+    platform: macOS
+    sources:
+      - path: FantasticRelay
+        excludes:
+          - Info.plist
+          - FantasticRelay.entitlements
+      - path: fantastic.icon
+    dependencies:
+      - package: RelayCore
+        product: RelayCore
+    info:
+      path: FantasticRelay/Info.plist
+      properties:
+        CFBundleDisplayName: Fantastic Relay
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        LSApplicationCategoryType: public.app-category.developer-tools
+        CFBundleIconName: fantastic
+        # Agent app (like Ollama): menu-bar only, no Dock icon, NOT in the
+        # running-apps / Cmd-Tab list when it has no window. The app flips to a
+        # regular (.regular) activation policy while the dashboard is open and
+        # back to .accessory when it closes (see AppDelegate + MenuBarContent).
+        LSUIElement: true
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_NAME: Fantastic Relay
+        PRODUCT_BUNDLE_IDENTIFIER: oleksandr.aisixteen.fantastic.relay
+        CODE_SIGN_ENTITLEMENTS: FantasticRelay/FantasticRelay.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: fantastic
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+
+schemes:
+  Fantastic Relay:
+    build:
+      targets:
+        FantasticRelay: all
+    run:
+      config: Debug

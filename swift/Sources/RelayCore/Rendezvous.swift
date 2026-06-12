@@ -39,10 +39,10 @@ final class Rendezvous: @unchecked Sendable {
 
     private let lock = NSLock()
     private var waiting: [Key: Waiter] = [:]
-    let meter: StdoutMeter
+    let meter: Meter
     let pairTimeout: TimeAmount
 
-    init(meter: StdoutMeter, pairTimeout: TimeAmount) {
+    init(meter: Meter, pairTimeout: TimeAmount) {
         self.meter = meter
         self.pairTimeout = pairTimeout
     }

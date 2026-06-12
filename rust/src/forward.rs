@@ -1,7 +1,8 @@
 //! Opaque bidirectional forwarding.
 //!
 //! Two independent pump tasks copy frames A→B and B→A, preserving the opcode
-//! (Text and Binary both — the kernel sends Text/JSON today), never inspecting
+//! (Text and Binary both — cloud_bridge sends Binary TLS ciphertext, with the
+//! kernels' tagged `[len | tag | wire]` records inside), never inspecting
 //! the payload. Control frames (Ping/Pong) are NOT cross-forwarded; tungstenite
 //! auto-Pongs each hop locally, so each pump periodically flushes its sink to
 //! push those queued pongs out even on a quiet direction. A Close is forwarded,

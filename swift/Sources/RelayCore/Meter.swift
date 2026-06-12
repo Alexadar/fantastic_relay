@@ -51,6 +51,11 @@ public struct UsageEvent: Codable, Sendable {
 /// Pluggable metering sink. Mirrors the Rust `Meter` trait.
 public protocol Meter: Sendable {
     func record(_ event: UsageEvent)
+
+    /// Salted, opaque session id derived from the rendezvous. A requirement (not
+    /// a default) because the salt is per-instance state — each sink owns its
+    /// own salt so the raw rendezvous id never leaks into logs or the UI.
+    func sessionId(_ rendezvous: String) -> String
 }
 
 /// Default impl: one JSON line per event on stdout.

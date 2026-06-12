@@ -67,8 +67,10 @@ unused. The control plane issues **both** peers a token carrying the **same**
 ## 4. Forwarding (opaque)
 
 - Once paired, **Binary and Text frames are forwarded verbatim**, opcode
-  preserved, never inspected. (The kernel sends Text/JSON today; Binary is
-  headroom.)
+  preserved, never inspected. (With `cloud_bridge` the payload is Binary — TLS
+  ciphertext whose inner framing is the kernels' tagged
+  `[4-byte BE u32 len | 1-byte tag | wire]` records, tag 0 = JSON frame,
+  tag 1 = binary codec frame. All opaque to the relay; Text stays supported.)
 - **Ping/Pong are not cross-forwarded** — each hop's WebSocket auto-replies to
   pings locally. Send your own keepalive as an ordinary **data** frame (below).
 - A **Close** is forwarded, then that direction half-closes.
