@@ -22,6 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil)
+
+        // Autostart: bring the relay + tunnel up at launch if configured (and a
+        // password is set). Fails gracefully into .failed if not.
+        if RelayController.shared.settings.autostart {
+            RelayController.shared.start()
+        }
     }
 
     /// When the last regular (main-capable) window closes, become an accessory

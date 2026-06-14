@@ -25,21 +25,37 @@ Stop / Copy URL, or open the dashboard for setup + the pairing handoff.
 
 The app only **runs** a named tunnel — it never drives `login`/`create`/`route`.
 
+The app runs two local services: the relay WebSocket on the **Listen port**
+(`9443`) and the issuer endpoint on `9444`. The tunnel routes `/issue` → 9444 and
+everything else → 9443.
+
 ```sh
-cloudflared login
-cloudflared tunnel create my-relay
-# Map your hostname → the relay's loopback port (must match the app's Listen port):
+cloudflared tunnel login
+cloudflared tunnel create my-relay        # prints a <UUID> + ~/.cloudflared/<UUID>.json
 cloudflared tunnel route dns my-relay relay.example.com
-# ingress in ~/.cloudflared/config.yml:
-#   ingress:
-#     - hostname: relay.example.com
-#       service: http://127.0.0.1:9443
-#     - service: http_status:404
 ```
 
-Then in the dashboard set **Named tunnel** = `my-relay`, **Public URL** =
-`wss://relay.example.com`, **Listen port** = `9443`, set a **password**, and hit
-**Start**.
+Then write `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: my-relay
+credentials-file: /Users/<you>/.cloudflared/<UUID>.json
+
+ingress:
+  # Issuer endpoint (password → token) — more specific path must come first.
+  - hostname: relay.example.com
+    path: ^/issue
+    service: http://127.0.0.1:9444
+  # Everything else = the relay WebSocket.
+  - hostname: relay.example.com
+    service: http://127.0.0.1:9443
+  - service: http_status:404
+```
+
+Validate with `cloudflared tunnel ingress validate`. Then in the dashboard set
+**Named tunnel** = `my-relay`, **Public URL** = `wss://relay.example.com`,
+**Listen port** = `9443`, set a **password**, and hit **Start** — the app runs
+`cloudflared tunnel run my-relay`, so don't also run cloudflared yourself.
 
 ## Pairing a device
 

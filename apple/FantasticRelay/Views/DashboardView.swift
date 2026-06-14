@@ -103,6 +103,9 @@ struct DashboardView: View {
                         .disabled(passwordField.isEmpty || passwordField == controller.password)
                 }
             }
+            Toggle("Start automatically on launch", isOn: $controller.settings.autostart)
+                .controlSize(.small)
+                .onChange(of: controller.settings.autostart) { _, _ in controller.saveSettings() }
             HStack(spacing: 10) {
                 Button("Save settings") { controller.saveSettings() }
                 Text("One-time `cloudflared login / create / route` lives in the README.")
