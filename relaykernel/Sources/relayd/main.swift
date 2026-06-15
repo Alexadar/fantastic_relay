@@ -11,15 +11,15 @@ let config = RelayConfig.fromEnv()
 let engine = RelayEngine(config: config)
 
 Task {
-  do {
-    let port = try await engine.start()
-    log(
-      "relayd: relay-kernel up — listen \(config.listenHost):\(port), ingress=\(config.ingressRule)"
-    )
-  } catch {
-    log("relayd: failed to start: \(error)")
-    exit(1)
-  }
+    do {
+        let port = try await engine.start()
+        log(
+            "relayd: relay-kernel up — listen \(config.listenHost):\(port), ingress=\(config.ingressRule)"
+        )
+    } catch {
+        log("relayd: failed to start: \(error)")
+        exit(1)
+    }
 }
 
 // Block the main thread running the dispatch main queue; the kernel, eviction

@@ -1,6 +1,8 @@
 name: Swift
 
-# Build + test the Swift relay package (RelayCore + relayd). No deploy.
+# Build + test the relay-kernel package (relaykernel/). It depends on the canvas
+# Swift kernel as a path-dep sibling, so CI clones fantastic_canvas next to the
+# checkout (matching the ../../fantastic_canvas/swift path).
 
 on:
   push:
@@ -14,17 +16,22 @@ permissions:
 jobs:
   swift:
     runs-on: macos-15
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: swift
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout canvas kernel (path-dep sibling)
+        run: |
+          git clone --depth 1 \
+            https://github.com/Alexadar/fantastic_canvas.git \
+            "$(dirname "$GITHUB_WORKSPACE")/fantastic_canvas"
       - name: Swift version
         run: swift --version
       - name: format (lint)
+        working-directory: relaykernel
         run: swift format lint --strict --recursive Sources Tests
       - name: build
+        working-directory: relaykernel
         run: swift build
       - name: test
+        working-directory: relaykernel
         run: swift test

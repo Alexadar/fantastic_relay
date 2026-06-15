@@ -4,8 +4,8 @@ import Foundation
 /// Writes frames out to one connected peer's socket. The NIO connection handler
 /// conforms to this; the bundle + eviction loop only see this seam.
 public protocol PeerWriter: AnyObject, Sendable {
-  func deliver(_ frame: JSON)
-  func shutdown()
+    func deliver(_ frame: JSON)
+    func shutdown()
 }
 
 /// Process-global registry of live peer connections, keyed by GUID. Mirrors the
@@ -14,68 +14,68 @@ public protocol PeerWriter: AnyObject, Sendable {
 /// (lists + evicts). `last_seen` here — not in agent records — so per-frame touches
 /// are cheap and don't churn the kernel.
 public final class RelayPeers: @unchecked Sendable {
-  public static let shared = RelayPeers()
+    public static let shared = RelayPeers()
 
-  private struct Entry {
-    let writer: PeerWriter
-    var lastSeen: Double
-    let since: Double
-  }
-
-  private let lock = NSLock()
-  private var peers: [String: Entry] = [:]
-
-  public func add(_ guid: String, writer: PeerWriter) {
-    let now = Date().timeIntervalSince1970
-    lock.lock()
-    peers[guid] = Entry(writer: writer, lastSeen: now, since: now)
-    lock.unlock()
-  }
-
-  public func touch(_ guid: String) {
-    let now = Date().timeIntervalSince1970
-    lock.lock()
-    if var e = peers[guid] {
-      e.lastSeen = now
-      peers[guid] = e
+    private struct Entry {
+        let writer: PeerWriter
+        var lastSeen: Double
+        let since: Double
     }
-    lock.unlock()
-  }
 
-  public func remove(_ guid: String) {
-    lock.lock()
-    peers.removeValue(forKey: guid)
-    lock.unlock()
-  }
+    private let lock = NSLock()
+    private var peers: [String: Entry] = [:]
 
-  public func has(_ guid: String) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return peers[guid] != nil
-  }
+    public func add(_ guid: String, writer: PeerWriter) {
+        let now = Date().timeIntervalSince1970
+        lock.lock()
+        peers[guid] = Entry(writer: writer, lastSeen: now, since: now)
+        lock.unlock()
+    }
 
-  public func writer(_ guid: String) -> PeerWriter? {
-    lock.lock()
-    defer { lock.unlock() }
-    return peers[guid]?.writer
-  }
+    public func touch(_ guid: String) {
+        let now = Date().timeIntervalSince1970
+        lock.lock()
+        if var e = peers[guid] {
+            e.lastSeen = now
+            peers[guid] = e
+        }
+        lock.unlock()
+    }
 
-  public func snapshot() -> [(guid: String, lastSeen: Double, since: Double)] {
-    lock.lock()
-    defer { lock.unlock() }
-    return peers.map { (guid: $0.key, lastSeen: $0.value.lastSeen, since: $0.value.since) }
-  }
+    public func remove(_ guid: String) {
+        lock.lock()
+        peers.removeValue(forKey: guid)
+        lock.unlock()
+    }
 
-  public func count() -> Int {
-    lock.lock()
-    defer { lock.unlock() }
-    return peers.count
-  }
+    public func has(_ guid: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return peers[guid] != nil
+    }
 
-  /// Test helper — the registry is process-global; reset it between tests.
-  public func removeAll() {
-    lock.lock()
-    peers.removeAll()
-    lock.unlock()
-  }
+    public func writer(_ guid: String) -> PeerWriter? {
+        lock.lock()
+        defer { lock.unlock() }
+        return peers[guid]?.writer
+    }
+
+    public func snapshot() -> [(guid: String, lastSeen: Double, since: Double)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return peers.map { (guid: $0.key, lastSeen: $0.value.lastSeen, since: $0.value.since) }
+    }
+
+    public func count() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return peers.count
+    }
+
+    /// Test helper — the registry is process-global; reset it between tests.
+    public func removeAll() {
+        lock.lock()
+        peers.removeAll()
+        lock.unlock()
+    }
 }
