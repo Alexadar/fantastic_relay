@@ -1,11 +1,11 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "Aisixteen Fantastic — Relay (data-plane router)"
+title: "Aisixteen Fantastic — Relay (relay-kernel)"
 abstract: >-
-  A dumb, zero-trust opaque-frame WebSocket relay that pairs Aisixteen Fantastic
-  cloud_bridge endpoints through NAT/firewalls: verify a control-plane token,
-  pair two peers by rendezvous, forward opaque bytes, and meter — never reading
-  the payload.
+  A relay-kernel for Aisixteen Fantastic: connected kernels become agents, so the
+  relay is an addressable router with a live directory (unique GUIDs, green/yellow/
+  red health, keepalive eviction) rather than a dumb pipe. Built on the Fantastic
+  kernel; one instance per user, exposed through a user-run tunnel.
 type: software
 authors:
   - family-names: Koreniuk
@@ -16,8 +16,8 @@ url: "https://github.com/Alexadar/fantastic_relay"
 license: AGPL-3.0-or-later
 keywords:
   - relay
-  - rendezvous
+  - kernel
   - websocket
-  - zero-trust
+  - directory
   - nat-traversal
-  - rust
+  - swift

@@ -24,12 +24,11 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: "LSKNNBG94G"
 
-# Operator-side macOS app: runs the relay (RelayCore) in-process, is the
-# control plane (holds the issuer signing key + password), and runs a
-# pre-configured cloudflared NAMED tunnel. Unsandboxed Developer-ID (spawns
-# cloudflared + binds a loopback socket) — NOT Mac App Store. RelayCore is a
-# path package; Xcode keys it by manifest name "RelayCore" so the ../swift
-# directory-basename collision (canvas vs relay both named "swift") never bites.
+# Operator-side macOS app: runs the relay-kernel (RelayKernel engine) in-process,
+# holds the group password, and runs a pre-configured cloudflared NAMED tunnel.
+# Unsandboxed Developer-ID (spawns cloudflared + binds a loopback socket) — NOT
+# Mac App Store. RelayKernel is a path package (../relaykernel); Xcode keys it by
+# manifest name so its transitive canvas-kernel path-dep resolves cleanly.
 packages:
   RelayKernel:
     path: ../relaykernel

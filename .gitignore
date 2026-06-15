@@ -10,12 +10,6 @@
 # Scratch (gitignored by request)
 tmp/
 
-# Rust (Cargo.lock IS committed — this is a binary crate)
-target/
-**/target/
-**/*.rs.bk
-*.pdb
-
 # Swift (Package.resolved IS committed for reproducible builds)
 .build/
 **/.build/

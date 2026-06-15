@@ -32,8 +32,7 @@ of the project, not licensed by these terms.
 
 ---
 
-Third-party components (their own licenses apply, not this project's AGPL
-terms): the Rust crate dependencies (tokio, tokio-tungstenite, ed25519-dalek,
-serde, dashmap, sha2, uuid, …) are MIT / Apache-2.0 licensed. Cargo.toml
-enumerates the direct set; a generated THIRD_PARTY_LICENSES (cargo-about /
-cargo-deny) covers the full transitive tree.
+Third-party components (their own licenses apply, not this project's AGPL terms):
+the Swift package dependencies — Apple swift-nio / swift-collections / swift-crypto
+(Apache-2.0) — and the Fantastic kernel (`fantastic_canvas`, AGPL-3.0-or-later,
+same family), reused as a library. `relaykernel/Package.resolved` pins the set.

@@ -19,9 +19,8 @@ jti = "jti"
 
 [files]
 extend-exclude = [
-    "**/target/",
     "**/.build/",
+    "build/",
     "tmp/",
-    "**/Cargo.lock",
     "**/Package.resolved",
 ]
