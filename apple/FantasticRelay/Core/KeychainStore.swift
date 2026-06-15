@@ -9,8 +9,8 @@ enum KeychainError: Error, CustomStringConvertible {
     }
 }
 
-/// Minimal Keychain wrapper for small secrets (the signing key + password),
-/// scoped to this app's bundle id as generic passwords.
+/// Minimal Keychain wrapper for the relay group password, scoped to this app's
+/// bundle id as a generic password.
 ///
 /// Deliberately the LEGACY (file-based) keychain — NOT
 /// `kSecUseDataProtectionKeychain`, which requires a keychain-access-group that

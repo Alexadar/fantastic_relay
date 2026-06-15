@@ -27,6 +27,7 @@ let package = Package(
             dependencies: [
                 .product(name: "FantasticKernel", package: "swift"),
                 .product(name: "FantasticJSON", package: "swift"),
+                .product(name: "FantasticIoBridge", package: "swift"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),

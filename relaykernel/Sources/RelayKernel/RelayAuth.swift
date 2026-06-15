@@ -1,54 +1,44 @@
+import FantasticIoBridge
+import FantasticJSON
 import Foundation
 
-/// The auth boundary — abstract + pluggable, resolved by NAME. `password` is the
-/// first concrete rule; `certificate` is a future rule (seam left open, not built).
-/// Mirrors the canvas ingress-rule registry; once `FantasticIoBridge` is exposed as
-/// a product, `PasswordRule` delegates to `IngressRules.resolve("password")` instead
-/// of carrying its own compare.
+/// The auth boundary — abstract + pluggable, resolved by NAME. It **delegates to
+/// the canvas io_bridge ingress-rule registry** (reused as a library): `password`
+/// is the first rule; `certificate` slots in once canvas registers it — no change
+/// here. No local crypto / no duplicated rule.
 public protocol RelayIngressRule: Sendable {
-    /// Authorize a connecting peer from its handshake credential. Connection-level
-    /// (checked once at upgrade), not per-frame.
+    /// Authorize a connecting peer from its handshake credential (connection-level,
+    /// checked once at upgrade).
     func authorize(guid: String, credential: String?) -> Bool
 }
 
-/// Shared group password from an env var (constant-time compare). First rule.
-public struct PasswordRule: RelayIngressRule {
-    private let expected: String
-    public init(tokenEnv: String) {
-        self.expected = ProcessInfo.processInfo.environment[tokenEnv] ?? ""
-    }
-    public init(expected: String) { self.expected = expected }
-    public func authorize(guid: String, credential: String?) -> Bool {
-        guard !expected.isEmpty, let c = credential else { return false }
-        return ctEq(c, expected)
+/// Wraps a canvas `IngressRule` behind the shared `gateInbound` chokepoint.
+struct CanvasIngressRule: RelayIngressRule {
+    let rule: IngressRule
+    func authorize(guid: String, credential: String?) -> Bool {
+        let action = AuthAction(kind: "call", target: guid, verb: "connect", token: credential)
+        if case .allow = gateInbound(rule: rule, action: action) { return true }
+        return false
     }
 }
 
-/// Dev-only open rule.
-public struct AllowAllRule: RelayIngressRule {
-    public init() {}
-    public func authorize(guid: String, credential: String?) -> Bool { true }
+/// Sealed fallback — used if a rule spec is unknown/malformed (e.g. `certificate`
+/// before canvas adds it). Fail closed.
+struct DenyRelayIngress: RelayIngressRule {
+    func authorize(guid: String, credential: String?) -> Bool { false }
 }
 
-/// Resolve the configured ingress rule by name. Adding `certificate` later is a
-/// case here + a struct — `RelayInbound` never changes. A literal `groupToken`
-/// (app/tests) wins over the env var.
+/// Resolve the configured ingress rule by name via the canvas registry. The
+/// `password` rule reads its expected token from `config.groupTokenEnv` — the
+/// engine sets that env from the literal `groupToken` (app/tests) when present.
 public func resolveRelayIngress(_ config: RelayConfig) -> RelayIngressRule {
-    switch config.ingressRule {
-    case "allow_all":
-        return AllowAllRule()
-    // case "certificate": return CertificateRule(...)   // FUTURE — seam open, not built
-    default:  // "password"
-        if let t = config.groupToken { return PasswordRule(expected: t) }
-        return PasswordRule(tokenEnv: config.groupTokenEnv)
+    let spec: JSON = .object([
+        "type": .string(config.ingressRule),
+        "env": .string(config.groupTokenEnv),
+    ])
+    do {
+        return CanvasIngressRule(rule: try IngressRules.resolve(spec))
+    } catch {
+        return DenyRelayIngress()
     }
-}
-
-func ctEq(_ a: String, _ b: String) -> Bool {
-    let x = Array(a.utf8)
-    let y = Array(b.utf8)
-    if x.count != y.count { return false }
-    var diff: UInt8 = 0
-    for i in 0..<x.count { diff |= x[i] ^ y[i] }
-    return diff == 0
 }

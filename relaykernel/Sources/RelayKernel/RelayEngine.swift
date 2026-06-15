@@ -28,6 +28,12 @@ public final class RelayEngine: @unchecked Sendable {
     /// WS surface. Returns once listening; `boundPort` holds the actual port.
     @discardableResult
     public func start() async throws -> Int {
+        // The canvas `password` ingress rule reads the expected token from the env
+        // var; export the literal credential (app/tests) so the rule sees it.
+        if let token = config.groupToken {
+            setenv(config.groupTokenEnv, token, 1)
+        }
+
         let root = Agent(id: AgentId("core"), handlerModule: nil, parentId: nil)
         _ = kernel.register(root)
         kernel.setRoot(root)
