@@ -8,13 +8,15 @@ public protocol PeerWriter: AnyObject, Sendable {
     func shutdown()
 }
 
-/// Process-global registry of live peer connections, keyed by GUID. Mirrors the
-/// canvas `proxy_agent` host-registry pattern: shared between the inbound surface
-/// (registers + touches), the `peer_proxy` bundle (writes), and the `relay_router`
-/// (lists + evicts). `last_seen` here — not in agent records — so per-frame touches
+/// Registry of live peer connections, keyed by GUID. **Per-engine** (owned by a
+/// `RelayEngine`, NOT a process-global) so two engines in one process — the app,
+/// or the isolation tests — never share a directory or cross-route on a GUID
+/// collision. Shared within an engine between the inbound surface (registers +
+/// touches), the `peer_proxy` bundle (writes), and the `relay_router` (lists +
+/// evicts). `last_seen` lives here — not in agent records — so per-frame touches
 /// are cheap and don't churn the kernel.
 public final class RelayPeers: @unchecked Sendable {
-    public static let shared = RelayPeers()
+    public init() {}
 
     private struct Entry {
         let writer: PeerWriter
@@ -70,12 +72,5 @@ public final class RelayPeers: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return peers.count
-    }
-
-    /// Test helper — the registry is process-global; reset it between tests.
-    public func removeAll() {
-        lock.lock()
-        peers.removeAll()
-        lock.unlock()
     }
 }

@@ -10,7 +10,11 @@ import Foundation
 public struct RelayRouterBundle: AgentBundle {
     public let name = "relay_router"
     let config: RelayConfig
-    public init(config: RelayConfig) { self.config = config }
+    let peers: RelayPeers  // this engine's registry (not global)
+    init(config: RelayConfig, peers: RelayPeers) {
+        self.config = config
+        self.peers = peers
+    }
 
     public func handle(agentId: AgentId, payload: JSON, kernel: Kernel) async throws -> JSON? {
         switch payload["type"].asString ?? "" {
@@ -27,7 +31,7 @@ public struct RelayRouterBundle: AgentBundle {
         case "boot", "shutdown":
             return .object(["ok": .bool(true)])
         case "list_peers":
-            return .object(["peers": .array(Self.listPeers(config))])
+            return .object(["peers": .array(Self.peerList(peers, config))])
         case "evict":
             guard let guid = payload["guid"].asString else {
                 return .object(["error": .string("evict requires guid")])
@@ -49,8 +53,8 @@ public struct RelayRouterBundle: AgentBundle {
         return "red"
     }
 
-    public static func listPeers(_ config: RelayConfig) -> [JSON] {
-        RelayPeers.shared.snapshot().map { p in
+    public static func peerList(_ peers: RelayPeers, _ config: RelayConfig) -> [JSON] {
+        peers.snapshot().map { p in
             .object([
                 "guid": .string(p.guid),
                 "status": .string(status(p.lastSeen, config)),

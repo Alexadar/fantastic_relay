@@ -13,6 +13,9 @@ import Foundation
 public final class RelayEngine: @unchecked Sendable {
     public let kernel: Kernel
     public let config: RelayConfig
+    /// This engine's connection registry — per-engine (NOT global) so two engines
+    /// in one process can't see or cross-route each other's peers.
+    public let peers: RelayPeers
     public private(set) var boundPort: Int = 0
 
     private var evictionTask: Task<Void, Never>?
@@ -22,9 +25,11 @@ public final class RelayEngine: @unchecked Sendable {
 
     public init(config: RelayConfig) {
         self.config = config
+        let peers = RelayPeers()
+        self.peers = peers
         let registry = BundleRegistry()
-        registry.register("peer_proxy", PeerProxyBundle())
-        registry.register("relay_router", RelayRouterBundle(config: config))
+        registry.register("peer_proxy", PeerProxyBundle(peers: peers))
+        registry.register("relay_router", RelayRouterBundle(config: config, peers: peers))
         self.kernel = Kernel(storage: .inMemory, bundles: registry, inboxBound: config.inboxBound)
     }
 
@@ -101,13 +106,14 @@ public final class RelayEngine: @unchecked Sendable {
     /// which fires `peer_proxy.onDelete`, closing the socket + clearing the entry.
     private func startEvictionLoop() {
         let kernel = self.kernel
+        let peers = self.peers
         let evictSecs = config.evictSecs
         let sweepNanos = UInt64(config.sweepSecs * 1_000_000_000)
         evictionTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: sweepNanos)
                 let now = Date().timeIntervalSince1970
-                for p in RelayPeers.shared.snapshot() where now - p.lastSeen > evictSecs {
+                for p in peers.snapshot() where now - p.lastSeen > evictSecs {
                     _ = await kernel.send(
                         AgentId("core"),
                         .object(["type": .string("delete_agent"), "id": .string(p.guid)]))

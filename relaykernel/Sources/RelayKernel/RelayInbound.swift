@@ -52,7 +52,7 @@ final class WSPeerHandler: ChannelInboundHandler {
     func handlerAdded(context: ChannelHandlerContext) {
         let conn = PeerConnection(guid: guid, channel: context.channel)
         self.conn = conn
-        RelayPeers.shared.add(guid, writer: conn)
+        engine.peers.add(guid, writer: conn)
         let engine = self.engine
         let guid = self.guid
         Task {
@@ -98,7 +98,7 @@ final class WSPeerHandler: ChannelInboundHandler {
         case .text:
             var d = frame.unmaskedData
             let text = d.readString(length: d.readableBytes) ?? ""
-            RelayPeers.shared.touch(guid)
+            self.engine.peers.touch(guid)
             let engine = self.engine
             let guid = self.guid
             let conn = self.conn
@@ -191,7 +191,7 @@ public final class RelayInbound: @unchecked Sendable {
                 let ok =
                     proto.contains("fantastic.relay.v1") && !guid.isEmpty
                     && rule.authorize(guid: guid, credential: cred)
-                    && !RelayPeers.shared.has(guid)
+                    && !engine.peers.has(guid)
                 guard ok else { return channel.eventLoop.makeSucceededFuture(nil) }
                 var h = HTTPHeaders()
                 h.add(name: "Sec-WebSocket-Protocol", value: "fantastic.relay.v1")

@@ -24,7 +24,7 @@ final class RelayKernelTests: XCTestCase {
             func shutdown() {}
         }
         let w = FakeWriter()
-        RelayPeers.shared.add("A", writer: w)
+        engine.peers.add("A", writer: w)
         _ = await engine.kernel.send(
             AgentId("core"),
             .object([
@@ -48,7 +48,7 @@ final class RelayKernelTests: XCTestCase {
         XCTAssertEqual(w.delivered.first?["hello"].asString, "world")
 
         engine.stop()
-        RelayPeers.shared.remove("A")
+        engine.peers.remove("A")
     }
 
     func testStatusThresholds() {

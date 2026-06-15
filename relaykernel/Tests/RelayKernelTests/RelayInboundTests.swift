@@ -12,7 +12,6 @@ final class RelayInboundTests: XCTestCase {
     private let session = URLSession(configuration: .ephemeral)
 
     override func setUp() async throws {
-        RelayPeers.shared.removeAll()
         engine = RelayEngine(
             config: RelayConfig(listenPort: 0, groupToken: "secret", inboxBound: 1024))
         port = try await engine.start()
@@ -21,7 +20,6 @@ final class RelayInboundTests: XCTestCase {
     override func tearDown() async throws {
         engine.stop()
         engine = nil
-        RelayPeers.shared.removeAll()
     }
 
     // MARK: helpers
@@ -110,7 +108,7 @@ final class RelayInboundTests: XCTestCase {
         } catch {
             // receive throws because the WS handshake failed (or timed out with no frames).
         }
-        XCTAssertFalse(RelayPeers.shared.has("X"))
+        XCTAssertFalse(engine.peers.has("X"))
     }
 
     func testDirectoryWatchEvents() async throws {
@@ -136,7 +134,6 @@ final class RelayInboundTests: XCTestCase {
 
     func testKeepaliveEviction() async throws {
         engine.stop()
-        RelayPeers.shared.removeAll()
         engine = RelayEngine(
             config: RelayConfig(
                 listenPort: 0, groupToken: "secret", evictSecs: 1.5, sweepSecs: 0.5,
@@ -146,18 +143,18 @@ final class RelayInboundTests: XCTestCase {
         let a = connect("EV", cred: "secret")
         defer { a.cancel() }
         try await Task.sleep(nanoseconds: 400_000_000)
-        XCTAssertTrue(RelayPeers.shared.has("EV"))
+        XCTAssertTrue(engine.peers.has("EV"))
 
         // Stay silent past the evict TTL → the sweep deletes the peer_proxy.
         try await Task.sleep(nanoseconds: 2_600_000_000)
-        XCTAssertFalse(RelayPeers.shared.has("EV"))
+        XCTAssertFalse(engine.peers.has("EV"))
     }
 
     func testDuplicateGuidRejected() async throws {
         let a1 = connect("D", cred: "secret")
         defer { a1.cancel() }
         try await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertTrue(RelayPeers.shared.has("D"))
+        XCTAssertTrue(engine.peers.has("D"))
 
         let a2 = connect("D", cred: "secret")  // same GUID → must be refused
         defer { a2.cancel() }
