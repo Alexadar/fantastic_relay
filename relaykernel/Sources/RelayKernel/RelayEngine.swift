@@ -2,6 +2,10 @@ import FantasticJSON
 import FantasticKernel
 import Foundation
 
+#if canImport(Glibc)
+    import Glibc  // setenv on Linux (Darwin provides it via Foundation on macOS)
+#endif
+
 /// Boots a relay-kernel: a `Kernel` (canvas lib) with the relay bundles, the
 /// singleton `relay` router agent, the keepalive-eviction loop, and the NIO inbound
 /// WS surface. Used by both `relayd` (headless) and the Mac app (embedded) — same
