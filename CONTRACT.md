@@ -41,6 +41,24 @@ Relay → client:
 - **`target: <peer GUID>`** routes to that peer through one in-kernel hop; it
   arrives on the peer's socket as `{type:"event", source:<your GUID>, payload}`.
 
+### 2a. Binary frames (pure streams, no base64)
+
+A frame whose payload carries raw bytes (a `read_stream` chunk) rides as a
+**BINARY** WS frame using the shared `io_bridge` codec — the SAME encoding
+web_ws / ws_bridge use, so a relay peer interoperates byte-for-byte:
+
+```
+[ 4-byte BE uint32 H | H-byte JSON header | M-byte raw body ]
+```
+
+The header is the `send` envelope with the single bytes value nulled and a
+`_binary_path` naming where it lived. The relay reads `target` from the header,
+re-emits it as a binary `{type:"event", source:<your GUID>, payload, _binary_path}`
+frame (the `payload` key is unchanged, so the path stays valid) and forwards the
+body **verbatim** — no base64, no kernel hop. The peer's decoder restores the body
+at `_binary_path`. The text/binary split is carried by the WS frame type. (The
+relay uses `FantasticIoBridge.Codec` — it does not reimplement the framing.)
+
 ## 3. Directory (`relay`)
 
 `call` `relay` with `{type:"list_peers"}` → `{peers:[{guid,status,last_seen,since}]}`.

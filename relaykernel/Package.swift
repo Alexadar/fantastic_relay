@@ -47,7 +47,10 @@ let package = Package(
         ),
         .testTarget(
             name: "RelayKernelTests",
-            dependencies: ["RelayKernel"],
+            dependencies: [
+                "RelayKernel",
+                .product(name: "FantasticIoBridge", package: "swift"),
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

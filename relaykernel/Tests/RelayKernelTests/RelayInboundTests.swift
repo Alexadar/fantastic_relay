@@ -1,3 +1,5 @@
+import FantasticIoBridge
+import FantasticJSON
 import Foundation
 import XCTest
 
@@ -63,7 +65,68 @@ final class RelayInboundTests: XCTestCase {
         return (try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]) ?? [:]
     }
 
+    /// Receive one raw BINARY frame (the pure-stream path) as `Data`.
+    private func recvData(_ task: URLSessionWebSocketTask, _ timeout: TimeInterval = 3) async throws
+        -> Data
+    {
+        return try await withThrowingTaskGroup(of: Data.self) { group in
+            group.addTask {
+                switch try await task.receive() {
+                case .data(let d): return d
+                case .string(let s): return Data(s.utf8)
+                @unknown default: return Data()
+                }
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                task.cancel(with: .goingAway, reason: nil)
+                throw E.timeout
+            }
+            let r = try await group.next()!
+            group.cancelAll()
+            return r
+        }
+    }
+
+    /// Build a codec frame (the shared canvas `FantasticIoBridge.Codec`) wrapping a
+    /// relay `send` to `target`, carrying `body` at `payload.chunk`.
+    private func codecFrame(target: String, body: [UInt8]) -> Data {
+        let header: JSON = .object([
+            "type": .string("send"),
+            "target": .string(target),
+            "payload": .object(["chunk": .null]),
+            "_binary_path": .string("payload.chunk"),
+        ])
+        return Codec.encodeBinaryFrame(header: header, body: Data(body))
+    }
+
     // MARK: tests
+
+    func testBinaryStreamRouting() async throws {
+        let a = connect("A", cred: "secret")
+        let b = connect("B", cred: "secret")
+        defer {
+            a.cancel()
+            b.cancel()
+        }
+        try await Task.sleep(nanoseconds: 400_000_000)  // both peer_proxy agents register
+
+        // Raw, deliberately non-UTF8 body → proves the bytes ride the wire verbatim
+        // (no base64, no text coercion).
+        let body: [UInt8] = [0x00, 0xFF, 0xFE, 0xDE, 0xAD, 0xBE, 0xEF, 0x80, 0x01]
+        try await a.send(.data(codecFrame(target: "B", body: body)))
+
+        let received = try await recvData(b)
+        // Decode the relay's re-framed delivery with the shared codec.
+        let decoded = Codec.decodeBinaryFrame(received)
+        XCTAssertNotNil(decoded)
+        let (header, gotBody) = decoded ?? (.null, Data())
+        XCTAssertEqual(header["type"].asString, "event")
+        XCTAssertEqual(header["source"].asString, "A")
+        XCTAssertEqual(header["_binary_path"].asString, "payload.chunk")
+        // The body bytes survive byte-for-byte.
+        XCTAssertEqual([UInt8](gotBody), body)
+    }
 
     func testConnectDirectoryAndPeerRouting() async throws {
         let a = connect("A", cred: "secret")

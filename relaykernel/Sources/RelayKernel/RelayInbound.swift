@@ -1,3 +1,4 @@
+import FantasticIoBridge
 import FantasticJSON
 import FantasticKernel
 import Foundation
@@ -23,6 +24,18 @@ final class PeerConnection: PeerWriter, @unchecked Sendable {
             var buf = ch.allocator.buffer(capacity: text.utf8.count)
             buf.writeString(text)
             let wsf = WebSocketFrame(fin: true, opcode: .text, data: buf)
+            ch.writeAndFlush(wsf, promise: nil)
+        }
+    }
+    /// Write a prebuilt codec frame (`[4B len | header | body]`) out as a BINARY WS
+    /// frame — the raw body rides the wire untouched (no base64).
+    func deliverBinary(_ data: Data) {
+        let ch = channel
+        guard ch.isActive else { return }
+        ch.eventLoop.execute {
+            var buf = ch.allocator.buffer(capacity: data.count)
+            buf.writeBytes(data)
+            let wsf = WebSocketFrame(fin: true, opcode: .binary, data: buf)
             ch.writeAndFlush(wsf, promise: nil)
         }
     }
@@ -103,6 +116,16 @@ final class WSPeerHandler: ChannelInboundHandler {
             let guid = self.guid
             let conn = self.conn
             Task { await Self.route(text: text, guid: guid, engine: engine, conn: conn) }
+        case .binary:
+            // Pure-stream path: a `[4B len | JSON header | raw body]` codec frame.
+            // Route on the header's `target` to that peer as a BINARY event frame —
+            // the body bytes are forwarded verbatim (no base64, no kernel hop).
+            var d = frame.unmaskedData
+            let data = Data(d.readBytes(length: d.readableBytes) ?? [])
+            self.engine.peers.touch(guid)
+            let engine = self.engine
+            let guid = self.guid
+            Task { await Self.routeBinary(data: data, guid: guid, engine: engine) }
         case .ping:
             var d = frame.unmaskedData
             let pong = WebSocketFrame(
@@ -160,6 +183,38 @@ final class WSPeerHandler: ChannelInboundHandler {
             conn.deliver(
                 .object(["type": .string("error"), "id": id, "reason": .string("unknown_type")]))
         }
+    }
+
+    /// Route a binary codec frame peer→peer. The wire frame is
+    /// `[4B BE uint32 H | H-byte JSON header | M-byte raw body]` (the canvas
+    /// `io_bridge` codec): the header is a `{type:"send", target, payload, _binary_path}`
+    /// envelope with the one bytes value nulled, `_binary_path` naming where it lived.
+    /// We rewrite the header to `{type:"event", source:<guid>, payload, _binary_path}`
+    /// — `payload` keeps its key so `_binary_path` stays valid — and deliver the
+    /// re-framed `[len | header' | body]` to the target peer's socket as BINARY. Bulk
+    /// peer→peer bytes route DIRECTLY through the connection registry (the directory),
+    /// not the kernel; binary is never addressed to `relay`.
+    static func routeBinary(data: Data, guid: String, engine: RelayEngine) async {
+        // Decode + re-encode with the SHARED canvas codec (FantasticIoBridge.Codec) —
+        // the relay does not reimplement the framing, only the router's reframe.
+        guard let (header, body) = Codec.decodeBinaryFrame(data) else { return }
+        let target = header["target"].asString ?? ""
+        guard !target.isEmpty, target != "relay" else { return }
+        // A binary codec frame ALWAYS names its nulled bytes value via `_binary_path`;
+        // a frame without one is malformed → drop.
+        guard let bp = header["_binary_path"].asString else { return }
+        // Offline target → drop (the sender's stream sees no delivery, as for text).
+        guard let w = engine.peers.writer(target) else { return }
+
+        // `payload` keeps its key, so the path stays valid for the peer's decoder;
+        // the body rides through verbatim.
+        let outHeader: JSON = .object([
+            "type": .string("event"),
+            "source": .string(guid),
+            "payload": header["payload"],
+            "_binary_path": .string(bp),
+        ])
+        w.deliverBinary(Codec.encodeBinaryFrame(header: outHeader, body: body))
     }
 }
 

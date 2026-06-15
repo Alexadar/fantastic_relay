@@ -11,11 +11,33 @@ from __future__ import annotations
 
 import asyncio
 import json
+import struct
 from contextlib import asynccontextmanager
 
 import websockets
 
 SUBPROTOCOL = "fantastic.relay.v1"
+
+
+def encode_stream(target: str, body: bytes, *, path: str = "payload.chunk") -> bytes:
+    """Build a `[4B BE len | JSON header | raw body]` codec frame (the canvas
+    io_bridge encoding) wrapping a relay `send` to `target`. The bytes value lives
+    at `path` (nulled in the header, named by `_binary_path`)."""
+    header = {
+        "type": "send",
+        "target": target,
+        "payload": {"chunk": None},
+        "_binary_path": path,
+    }
+    hb = json.dumps(header).encode("utf-8")
+    return struct.pack(">I", len(hb)) + hb + body
+
+
+def decode_stream(data: bytes) -> tuple[dict, bytes]:
+    """Parse a `[4B len | header | body]` frame → (header dict, raw body)."""
+    head_len = struct.unpack(">I", data[:4])[0]
+    header = json.loads(data[4 : 4 + head_len].decode("utf-8"))
+    return header, data[4 + head_len :]
 
 
 class RelayWSError(Exception):
@@ -43,12 +65,20 @@ class RelayWS:
 
     async def expect_silence(self, window: float = 1.5) -> bool:
         """True iff NO frame arrives within `window` — the absence-of-frame assertion
-        the no-leak tests hinge on (traffic must not cross engines)."""
+        the no-leak tests hinge on (traffic must not cross engines). Works for text
+        OR binary frames (it reads the raw WS message, never parses)."""
         try:
-            await self.recv(window)
+            await asyncio.wait_for(self._ws.recv(), timeout=window)
             return False  # received a frame → leak
         except asyncio.TimeoutError:
             return True  # silent → isolated
+
+    async def send_bytes(self, data: bytes) -> None:
+        await self._ws.send(data)
+
+    async def recv_bytes(self, timeout: float = 3.0) -> bytes:
+        raw = await asyncio.wait_for(self._ws.recv(), timeout=timeout)
+        return raw if isinstance(raw, (bytes, bytearray)) else raw.encode("utf-8")
 
 
 @asynccontextmanager

@@ -3,8 +3,13 @@ import Foundation
 
 /// Writes frames out to one connected peer's socket. The NIO connection handler
 /// conforms to this; the bundle + eviction loop only see this seam.
+///
+/// `deliver` writes a JSON frame as a TEXT WS frame (the control plane). `deliverBinary`
+/// writes a prebuilt `[4B BE len | JSON header | raw body]` codec frame as a BINARY
+/// WS frame — the pure-stream path, matching the canvas `io_bridge` codec (no base64).
 public protocol PeerWriter: AnyObject, Sendable {
     func deliver(_ frame: JSON)
+    func deliverBinary(_ data: Data)
     func shutdown()
 }
 
