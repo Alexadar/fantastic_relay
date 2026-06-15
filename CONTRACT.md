@@ -29,6 +29,7 @@ Client → relay:
 | `send` | `target`, `payload` | fire-and-forget to `target` |
 | `watch` | `target` | subscribe to a target's events (e.g. `relay`) |
 | `unwatch` | `target` | unsubscribe |
+| `keepalive` | — | optional liveness refresh; no reply, no side effect (see §4) |
 
 Relay → client:
 | type | fields | meaning |
@@ -76,6 +77,10 @@ relay uses `FantasticIoBridge.Codec` — it does not reimplement the framing.)
   TTL is `delete_agent`'d → its socket closes → `peer_evicted` fires.
 - A CDN/edge in front of the relay may close idle WS (~100s); the connecting
   kernel should send a periodic frame to stay green (the relay just forwards).
+- `keepalive` is the explicit no-op for that: `{type:"keepalive"}` refreshes
+  `last_seen` and draws no reply. It is **optional** — any frame refreshes liveness,
+  and a peer that stops sending is simply reaped on the normal TTL. Prefer it over a
+  benign `unwatch` as a heartbeat.
 
 ## 5. Trust
 

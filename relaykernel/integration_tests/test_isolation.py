@@ -30,6 +30,19 @@ async def test_single_relay_directory_and_auth(relays):
     assert await try_connect_fails(r.port, "BADGE", cred="wrong-password")
 
 
+async def test_keepalive_no_reply(relays):
+    """`keepalive` is an optional, silent liveness refresh — no reply, no error. We
+    fire it then a list_peers; the only frame back is the call's reply (an error from
+    keepalive would arrive first), and the peer is still green."""
+    (r,) = relays(1)
+
+    async with connect(r.port, "KA", cred=r.token) as a:
+        await a.send({"type": "keepalive"})
+        peers = await a.list_peers()
+        assert [p["guid"] for p in peers] == ["KA"]
+        assert peers[0]["status"] == "green"
+
+
 async def test_directory_isolation(relays):
     """Each relay's directory is private — a peer on one is invisible to the others."""
     r1, r2, r3 = relays(3)

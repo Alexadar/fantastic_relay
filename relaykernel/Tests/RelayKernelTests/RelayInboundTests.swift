@@ -102,6 +102,24 @@ final class RelayInboundTests: XCTestCase {
 
     // MARK: tests
 
+    func testKeepaliveVerb() async throws {
+        let a = connect("KA", cred: "secret")
+        defer { a.cancel() }
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        // keepalive draws NO reply and NO error (it's a silent liveness refresh).
+        // We prove that by firing keepalive, then a list_peers call: the only frame
+        // that comes back is the call's reply — if keepalive had errored, that error
+        // frame would arrive first.
+        try await send(a, ["type": "keepalive"])
+        try await send(
+            a, ["type": "call", "id": "1", "target": "relay", "payload": ["type": "list_peers"]])
+        let reply = try await recv(a)
+        XCTAssertEqual(reply["type"] as? String, "reply")
+        let peers = ((reply["data"] as? [String: Any])?["peers"] as? [[String: Any]]) ?? []
+        XCTAssertEqual(peers.first?["status"] as? String, "green")
+    }
+
     func testBinaryStreamRouting() async throws {
         let a = connect("A", cred: "secret")
         let b = connect("B", cred: "secret")

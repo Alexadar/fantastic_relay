@@ -146,6 +146,7 @@ final class WSPeerHandler: ChannelInboundHandler {
 
     /// The relay wire protocol (mirrors the canvas web_ws envelope):
     ///   client→relay: {type:"call"|"send", id?, target, payload} | {type:"watch"|"unwatch", target}
+    ///                 | {type:"keepalive"} (optional liveness refresh, no reply)
     ///   relay→client: {type:"reply", id, data} | {type:"event", source, payload}
     /// `target:"relay"` hits the directory/router (reply correlated); any other
     /// target is a peer GUID → delivered to that peer's socket as an `event`.
@@ -179,6 +180,13 @@ final class WSPeerHandler: ChannelInboundHandler {
                 .object(["type": .string("reply"), "id": id, "data": .object(["ok": .bool(true)])]))
         case "unwatch":
             if target == "relay" { engine.removeDirectoryWatcher(guid) }
+        case "keepalive":
+            // Non-mandatory liveness refresh: `channelRead` already touched
+            // `last_seen` for ANY inbound frame, so this verb just gives connectors
+            // an explicit no-op heartbeat (no reply, no side effect) — they need not
+            // abuse `unwatch` to stay green. Keepalive is optional: a peer can go
+            // silent and the eviction loop reaps it on the normal TTL.
+            break
         default:
             conn.deliver(
                 .object(["type": .string("error"), "id": id, "reason": .string("unknown_type")]))
