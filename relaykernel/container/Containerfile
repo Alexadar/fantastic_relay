@@ -1,0 +1,83 @@
+# Fantastic Relay — headless relay-kernel container (Linux).
+#
+# ONE slim OCI image (podman AND docker) carrying a single prebuilt Linux binary:
+# `relayd`, the headless relay-kernel daemon. The relay is encryption-agnostic and
+# always boots; connected kernels become per-connection agents, the registry is the
+# directory, `kernel.send` routes peer→peer.
+#
+# Swift is compiled FROM SOURCE here — both the relay package AND the canvas kernel
+# it reuses as a path-dependency library. The canvas container deliberately does
+# NOT build swift, so this image can't reuse it for the compile; it stages both
+# package trees and builds `relayd` itself. `--static-swift-stdlib` bakes the Swift
+# runtime into the binary so the slim final image needs no swift toolchain.
+#
+# Plain Dockerfile syntax (no BuildKit-only features) so `docker build`,
+# `podman build`, and `buildah` all consume it.
+#
+# Build context is the staging dir assembled by container/build.sh:
+#   <ctx>/relaykernel/              the relay SwiftPM package
+#   <ctx>/fantastic_canvas/swift/   the canvas kernel (path-dep target)
+# The `../../fantastic_canvas/swift` path dep in relaykernel/Package.swift resolves
+# from /src/relaykernel → /src/fantastic_canvas/swift inside the build stage.
+
+# ── swift build (relayd, static stdlib) ────────────────────────────────────
+# swift-tools-version 6.0 → the official swift:6.0 Linux toolchain. Pinned to
+# `-bookworm` (Debian 12, glibc 2.36) to MATCH the final image's
+# `debian:bookworm-slim`: --static-swift-stdlib links the Swift stdlib but NOT
+# glibc, so the final image's glibc must be >= the build glibc. Same Debian release
+# on both stages keeps that invariant. The in-stage launch is a BUILD-TIME smoke
+# test: if relayd isn't Linux-clean (or can't boot + bind), the image build FAILS.
+FROM swift:6.0-bookworm AS swift-build
+WORKDIR /src
+COPY . .
+WORKDIR /src/fantastic_relay/relaykernel
+RUN swift build -c release --static-swift-stdlib --product relayd \
+    && mkdir -p /out && cp .build/release/relayd /out/relayd \
+    && (cp -r .build/release/*.resources /out/ 2>/dev/null || true)
+# Build-time smoke: boot relayd on an ephemeral port, confirm it logs "up", stop.
+RUN set -eu; \
+    RELAY_LISTEN_ADDR=127.0.0.1:0 FANTASTIC_GROUP_TOKEN=smoke /out/relayd & \
+    pid=$!; \
+    ok=0; for i in $(seq 1 50); do \
+      if kill -0 "$pid" 2>/dev/null; then ok=1; else ok=0; break; fi; \
+      sleep 0.1; done; \
+    kill "$pid" 2>/dev/null || true; \
+    [ "$ok" = 1 ] || { echo "relayd smoke FAILED (did not stay up)"; exit 1; }; \
+    echo "relayd smoke OK"
+
+# ── final image ────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS final
+
+# tini reaps zombies + forwards SIGTERM. ca-certificates + the Foundation C deps
+# the --static-swift-stdlib headless binary still links dynamically (the Swift
+# stdlib + ICU are baked in; libcurl4/libxml2 are not). Verified against
+# `ldd relayd` from the build stage.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tini ca-certificates libcurl4 libxml2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -u 1000 -m -s /bin/sh relay
+
+# prebuilt relayd (static Swift stdlib) + any SwiftPM resource bundles it resolves
+# via Bundle.module at runtime (copied wholesale so the bundle dir names survive).
+COPY --from=swift-build /out/ /opt/relay/bin/
+COPY fantastic_relay/relaykernel/container/entrypoint.sh /opt/relay/entrypoint.sh
+RUN chmod +x /opt/relay/entrypoint.sh /opt/relay/bin/relayd
+
+# Deployment context. RELAY_PORT is the in-container listen port (entrypoint binds
+# 0.0.0.0:$RELAY_PORT so a host-published mapping reaches it). 9443 is unprivileged
+# so uid 1000 binds it with no caps. FANTASTIC_GROUP_TOKEN is intentionally NOT
+# preset — the operator supplies the group password at `run` (-e FANTASTIC_GROUP_TOKEN=…).
+ARG RELAY_VERSION=dev
+ENV RELAY_BIN=/opt/relay/bin/relayd \
+    RELAY_PORT=9443 \
+    RELAY_INGRESS_RULE=password \
+    RELAY_ENV=container \
+    RELAY_VERSION=${RELAY_VERSION}
+
+USER relay
+WORKDIR /home/relay
+EXPOSE 9443
+
+# tini forwards SIGTERM; entrypoint execs relayd so signals reach the daemon.
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/relay/entrypoint.sh"]
