@@ -120,6 +120,41 @@ final class RelayInboundTests: XCTestCase {
         XCTAssertEqual(peers.first?["status"] as? String, "green")
     }
 
+    func testPeerStatusTransitionEvents() async throws {
+        // Short keepalive (→ yellow fast), long evict (no eviction during the test).
+        engine.stop()
+        engine = RelayEngine(
+            config: RelayConfig(
+                listenPort: 0, groupToken: "secret", keepaliveSecs: 0.5, evictSecs: 6,
+                sweepSecs: 0.3, inboxBound: 1024))
+        port = try await engine.start()
+
+        let watcher = connect("DOG", cred: "secret")
+        defer { watcher.cancel() }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        try await send(watcher, ["type": "watch", "id": "w", "target": "relay"])
+        _ = try await recv(watcher)  // watch ack
+
+        // CAT connects then stays silent → crosses green→yellow on the sweep.
+        let cat = connect("CAT", cred: "secret")
+        defer { cat.cancel() }
+
+        // The directory feed should carry a peer_status {guid:CAT, status:yellow}.
+        var sawYellow = false
+        for _ in 0..<15 {
+            let ev = try await recv(watcher, 4)
+            guard let payload = ev["payload"] as? [String: Any] else { continue }
+            if payload["type"] as? String == "peer_status",
+                payload["guid"] as? String == "CAT",
+                payload["status"] as? String == "yellow"
+            {
+                sawYellow = true
+                break
+            }
+        }
+        XCTAssertTrue(sawYellow, "expected a live peer_status yellow event for CAT")
+    }
+
     func testBinaryStreamRouting() async throws {
         let a = connect("A", cred: "secret")
         let b = connect("B", cred: "secret")

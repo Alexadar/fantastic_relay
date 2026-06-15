@@ -102,24 +102,57 @@ public final class RelayEngine: @unchecked Sendable {
         }
     }
 
-    /// Sweep `RelayPeers`; a peer past the evict TTL (red) is `delete_agent`'d —
-    /// which fires `peer_proxy.onDelete`, closing the socket + clearing the entry.
+    /// Sweep `RelayPeers`: emit a `peer_status {guid, status}` directory event when a
+    /// peer crosses a green/yellow/red threshold (so the orchestration app's dots
+    /// update live without re-polling `list_peers`), then `delete_agent` any peer past
+    /// the evict TTL (red) — which fires `peer_proxy.onDelete`, closing the socket +
+    /// clearing the entry. `peer_joined` already conveys a peer's initial green, so the
+    /// FIRST sighting only seeds the baseline; transitions thereafter fire.
     private func startEvictionLoop() {
         let kernel = self.kernel
         let peers = self.peers
+        let config = self.config
         let evictSecs = config.evictSecs
         let sweepNanos = UInt64(config.sweepSecs * 1_000_000_000)
         evictionTask = Task { [weak self] in
+            // Per-peer last-emitted status — owned solely by this serial task (no lock).
+            var lastStatus: [String: String] = [:]
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: sweepNanos)
                 let now = Date().timeIntervalSince1970
-                for p in peers.snapshot() where now - p.lastSeen > evictSecs {
+                let snap = peers.snapshot()
+                var live = Set<String>()
+
+                // Status transitions (green↔yellow↔red) → peer_status events.
+                for p in snap {
+                    live.insert(p.guid)
+                    let status = RelayRouterBundle.status(p.lastSeen, config)
+                    if let prev = lastStatus[p.guid] {
+                        if prev != status {
+                            lastStatus[p.guid] = status
+                            await self?.notifyDirectory(
+                                .object([
+                                    "type": .string("peer_status"),
+                                    "guid": .string(p.guid),
+                                    "status": .string(status),
+                                ]))
+                        }
+                    } else {
+                        lastStatus[p.guid] = status  // first sight — peer_joined covered it
+                    }
+                }
+
+                // Evict reds (past TTL) — unchanged.
+                for p in snap where now - p.lastSeen > evictSecs {
                     _ = await kernel.send(
                         AgentId("core"),
                         .object(["type": .string("delete_agent"), "id": .string(p.guid)]))
                     await self?.notifyDirectory(
                         .object(["type": .string("peer_evicted"), "guid": .string(p.guid)]))
                 }
+
+                // Forget peers that left/were evicted (so a reconnect re-baselines).
+                for g in lastStatus.keys where !live.contains(g) { lastStatus[g] = nil }
             }
         }
     }

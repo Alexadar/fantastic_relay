@@ -69,6 +69,9 @@ relay uses `FantasticIoBridge.Codec` — it does not reimplement the framing.)
 - `watch` `relay` to receive live `{type:"event", source:"relay", payload:{type:
   "peer_joined"|"peer_left"|"peer_evicted", guid}}` — the orchestration app's
   green/yellow/red button feed.
+- The feed also carries `{type:"peer_status", guid, status}` when a peer crosses a
+  green↔yellow↔red threshold (computed in the health/evict sweep), so the dots update
+  live without re-polling `list_peers`. `peer_joined` conveys the initial green.
 - `call` `relay` `{type:"evict", guid}` force-disconnects a peer.
 
 ## 4. Liveness
