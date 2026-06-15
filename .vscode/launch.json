@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:fantastic_relay}/swift",
+            "name": "Debug relayd (swift)",
+            "target": "relayd",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug relayd (swift)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:fantastic_relay}/swift",
+            "name": "Release relayd (swift)",
+            "target": "relayd",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release relayd (swift)"
+        }
+    ]
+}

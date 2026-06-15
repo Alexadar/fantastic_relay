@@ -1,21 +1,15 @@
 import Foundation
 
-/// Non-secret settings, persisted as JSON in Application Support. Secrets (the
-/// signing key + password) live in the Keychain (see IssuerKeyStore), never here.
-///
-/// `tenantId` / `audience` are FIXED constants for a single-user relay — not
-/// settings, not UI. The named-tunnel fields are the one-time config the user
-/// sets up per the README: the relay listens on `listenPort`, and the user's
-/// cloudflared ingress maps `publicURL`'s hostname → http://127.0.0.1:listenPort.
+/// Non-secret settings, persisted as JSON in Application Support. The group
+/// credential lives in the Keychain (see RelayController), never here. The
+/// named-tunnel fields are the one-time config the user sets up per the README:
+/// the relay-kernel listens on `listenPort`, and the user's cloudflared ingress
+/// maps `publicURL`'s hostname → http://127.0.0.1:listenPort.
 struct RelaySettings: Codable {
-    var listenPort: Int = 9443  // relay WS (cloudflared ingress: host → here)
-    var issuePort: Int = 9444  // issuer endpoint (cloudflared ingress: host/issue → here)
+    var listenPort: Int = 9443  // relay-kernel WS (cloudflared ingress: host → here)
     var tunnelName: String = ""  // the pre-configured cloudflared NAMED tunnel to run
     var publicURL: String = ""  // the stable wss:// router URL the user configured
     var autostart: Bool = false
-
-    static let tenantId = "t1"
-    static let audience = "fantastic.relay"
 
     private static var fileURL: URL {
         let base = FileManager.default

@@ -31,8 +31,8 @@ settings:
 # path package; Xcode keys it by manifest name "RelayCore" so the ../swift
 # directory-basename collision (canvas vs relay both named "swift") never bites.
 packages:
-  RelayCore:
-    path: ../swift
+  RelayKernel:
+    path: ../relaykernel
 
 targets:
   FantasticRelay:
@@ -45,8 +45,8 @@ targets:
           - FantasticRelay.entitlements
       - path: fantastic.icon
     dependencies:
-      - package: RelayCore
-        product: RelayCore
+      - package: RelayKernel
+        product: RelayKernel
     info:
       path: FantasticRelay/Info.plist
       properties:

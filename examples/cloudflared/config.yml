@@ -1,17 +1,15 @@
-# Example cloudflared tunnel config — expose the loopback router via a hostname
-# + path. Copy to ~/.cloudflared/config.yml, fill in your tunnel id, and run
-# `cloudflared tunnel run fantastic-relay`. See ../../docs/RUNNING.md.
+# Example cloudflared NAMED-tunnel config — expose the relay-kernel (loopback)
+# via your hostname. Copy to ~/.cloudflared/config.yml, fill in your tunnel id,
+# and run `cloudflared tunnel run fantastic-relay`. See ../../docs/RUNNING.md.
 #
 # The tunnel dials OUT to Cloudflare (no inbound ports). WebSockets pass through
-# the reverse proxy automatically.
+# automatically. A kernel connects to wss://<hostname>/<GUID>, so the whole
+# hostname routes to the relay-kernel WS — the GUID is a path component.
 
 tunnel: fantastic-relay
 credentials-file: /home/you/.cloudflared/REPLACE-WITH-TUNNEL-ID.json
 
 ingress:
-  # Route only the relay path to the router on loopback.
   - hostname: relay.example.com
-    path: /fantastic/cloud/router/*
     service: ws://127.0.0.1:9443
-  # Everything else 404s — nothing else is exposed.
   - service: http_status:404
