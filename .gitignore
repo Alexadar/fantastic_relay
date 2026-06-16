@@ -17,6 +17,15 @@ tmp/
 DerivedData/
 *.xcodeproj
 
+# Container build staging (assembled by container/build.sh)
+**/container/.ctx/
+
+# Python (integration_tests) — venv + caches; uv.lock IS committed
+**/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Secrets — never commit
 .env
 .env.*

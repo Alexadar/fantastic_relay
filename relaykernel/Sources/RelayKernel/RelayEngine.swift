@@ -13,6 +13,9 @@ import Foundation
 public final class RelayEngine: @unchecked Sendable {
     public let kernel: Kernel
     public let config: RelayConfig
+    /// This engine's connection registry — per-engine (NOT global) so two engines
+    /// in one process can't see or cross-route each other's peers.
+    public let peers: RelayPeers
     public private(set) var boundPort: Int = 0
 
     private var evictionTask: Task<Void, Never>?
@@ -22,9 +25,11 @@ public final class RelayEngine: @unchecked Sendable {
 
     public init(config: RelayConfig) {
         self.config = config
+        let peers = RelayPeers()
+        self.peers = peers
         let registry = BundleRegistry()
-        registry.register("peer_proxy", PeerProxyBundle())
-        registry.register("relay_router", RelayRouterBundle(config: config))
+        registry.register("peer_proxy", PeerProxyBundle(peers: peers))
+        registry.register("relay_router", RelayRouterBundle(config: config, peers: peers))
         self.kernel = Kernel(storage: .inMemory, bundles: registry, inboxBound: config.inboxBound)
     }
 
@@ -65,6 +70,13 @@ public final class RelayEngine: @unchecked Sendable {
         inbound = nil
     }
 
+    /// ACL seam — the single choke point for "may peer `from` forward to peer `to`".
+    /// Every peer→peer route (call/send/binary) passes through here. No policy yet
+    /// (always allows); fill this in to gate cross-peer routing without touching the
+    /// router. Reach ≠ control: the directory says who-owns-what; this is where a
+    /// future "may X drive Y" rule lands.
+    public func mayForward(from: String, to: String) -> Bool { true }
+
     // ── Directory watch (live green/yellow/red feed for the orchestration app) ──
 
     func addDirectoryWatcher(_ guid: String) {
@@ -97,23 +109,57 @@ public final class RelayEngine: @unchecked Sendable {
         }
     }
 
-    /// Sweep `RelayPeers`; a peer past the evict TTL (red) is `delete_agent`'d —
-    /// which fires `peer_proxy.onDelete`, closing the socket + clearing the entry.
+    /// Sweep `RelayPeers`: emit a `peer_status {guid, status}` directory event when a
+    /// peer crosses a green/yellow/red threshold (so the orchestration app's dots
+    /// update live without re-polling `list_peers`), then `delete_agent` any peer past
+    /// the evict TTL (red) — which fires `peer_proxy.onDelete`, closing the socket +
+    /// clearing the entry. `peer_joined` already conveys a peer's initial green, so the
+    /// FIRST sighting only seeds the baseline; transitions thereafter fire.
     private func startEvictionLoop() {
         let kernel = self.kernel
+        let peers = self.peers
+        let config = self.config
         let evictSecs = config.evictSecs
         let sweepNanos = UInt64(config.sweepSecs * 1_000_000_000)
         evictionTask = Task { [weak self] in
+            // Per-peer last-emitted status — owned solely by this serial task (no lock).
+            var lastStatus: [String: String] = [:]
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: sweepNanos)
                 let now = Date().timeIntervalSince1970
-                for p in RelayPeers.shared.snapshot() where now - p.lastSeen > evictSecs {
+                let snap = peers.snapshot()
+                var live = Set<String>()
+
+                // Status transitions (green↔yellow↔red) → peer_status events.
+                for p in snap {
+                    live.insert(p.guid)
+                    let status = RelayRouterBundle.status(p.lastSeen, config)
+                    if let prev = lastStatus[p.guid] {
+                        if prev != status {
+                            lastStatus[p.guid] = status
+                            await self?.notifyDirectory(
+                                .object([
+                                    "type": .string("peer_status"),
+                                    "guid": .string(p.guid),
+                                    "status": .string(status),
+                                ]))
+                        }
+                    } else {
+                        lastStatus[p.guid] = status  // first sight — peer_joined covered it
+                    }
+                }
+
+                // Evict reds (past TTL) — unchanged.
+                for p in snap where now - p.lastSeen > evictSecs {
                     _ = await kernel.send(
                         AgentId("core"),
                         .object(["type": .string("delete_agent"), "id": .string(p.guid)]))
                     await self?.notifyDirectory(
                         .object(["type": .string("peer_evicted"), "guid": .string(p.guid)]))
                 }
+
+                // Forget peers that left/were evicted (so a reconnect re-baselines).
+                for g in lastStatus.keys where !live.contains(g) { lastStatus[g] = nil }
             }
         }
     }

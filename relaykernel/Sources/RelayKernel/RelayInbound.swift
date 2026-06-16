@@ -1,3 +1,4 @@
+import FantasticIoBridge
 import FantasticJSON
 import FantasticKernel
 import Foundation
@@ -23,6 +24,18 @@ final class PeerConnection: PeerWriter, @unchecked Sendable {
             var buf = ch.allocator.buffer(capacity: text.utf8.count)
             buf.writeString(text)
             let wsf = WebSocketFrame(fin: true, opcode: .text, data: buf)
+            ch.writeAndFlush(wsf, promise: nil)
+        }
+    }
+    /// Write a prebuilt codec frame (`[4B len | header | body]`) out as a BINARY WS
+    /// frame — the raw body rides the wire untouched (no base64).
+    func deliverBinary(_ data: Data) {
+        let ch = channel
+        guard ch.isActive else { return }
+        ch.eventLoop.execute {
+            var buf = ch.allocator.buffer(capacity: data.count)
+            buf.writeBytes(data)
+            let wsf = WebSocketFrame(fin: true, opcode: .binary, data: buf)
             ch.writeAndFlush(wsf, promise: nil)
         }
     }
@@ -52,7 +65,7 @@ final class WSPeerHandler: ChannelInboundHandler {
     func handlerAdded(context: ChannelHandlerContext) {
         let conn = PeerConnection(guid: guid, channel: context.channel)
         self.conn = conn
-        RelayPeers.shared.add(guid, writer: conn)
+        engine.peers.add(guid, writer: conn)
         let engine = self.engine
         let guid = self.guid
         Task {
@@ -98,11 +111,21 @@ final class WSPeerHandler: ChannelInboundHandler {
         case .text:
             var d = frame.unmaskedData
             let text = d.readString(length: d.readableBytes) ?? ""
-            RelayPeers.shared.touch(guid)
+            self.engine.peers.touch(guid)
             let engine = self.engine
             let guid = self.guid
             let conn = self.conn
             Task { await Self.route(text: text, guid: guid, engine: engine, conn: conn) }
+        case .binary:
+            // Pure-stream path: a `[4B len | JSON header | raw body]` codec frame.
+            // Route on the header's `target` to that peer as a BINARY event frame —
+            // the body bytes are forwarded verbatim (no base64, no kernel hop).
+            var d = frame.unmaskedData
+            let data = Data(d.readBytes(length: d.readableBytes) ?? [])
+            self.engine.peers.touch(guid)
+            let engine = self.engine
+            let guid = self.guid
+            Task { await Self.routeBinary(data: data, guid: guid, engine: engine) }
         case .ping:
             var d = frame.unmaskedData
             let pong = WebSocketFrame(
@@ -123,6 +146,8 @@ final class WSPeerHandler: ChannelInboundHandler {
 
     /// The relay wire protocol (mirrors the canvas web_ws envelope):
     ///   client→relay: {type:"call"|"send", id?, target, payload} | {type:"watch"|"unwatch", target}
+    ///                 | {type:"keepalive"} (optional liveness refresh, no reply)
+    ///                 | {type:"announce", target:"relay", attrs:{…}} (opaque directory typing)
     ///   relay→client: {type:"reply", id, data} | {type:"event", source, payload}
     /// `target:"relay"` hits the directory/router (reply correlated); any other
     /// target is a peer GUID → delivered to that peer's socket as an `event`.
@@ -137,29 +162,92 @@ final class WSPeerHandler: ChannelInboundHandler {
             if target == "relay" {
                 let reply = await engine.kernel.send(AgentId("relay"), frame["payload"])
                 conn.deliver(.object(["type": .string("reply"), "id": id, "data": reply]))
-            } else {
+            } else if engine.mayForward(from: guid, to: target) {
                 let delivery: JSON = .object([
                     "type": .string("event"), "source": .string(guid),
                     "payload": frame["payload"], "id": id,
                 ])
                 let r = await engine.kernel.send(AgentId(target), delivery)
                 conn.deliver(.object(["type": .string("reply"), "id": id, "data": r]))
+            } else {
+                conn.deliver(
+                    .object([
+                        "type": .string("reply"), "id": id,
+                        "data": .object([
+                            "error": .string("forward denied"), "reason": .string("acl_denied"),
+                        ]),
+                    ]))
             }
         case "send":
+            guard engine.mayForward(from: guid, to: target) else { break }
             let delivery: JSON = .object([
                 "type": .string("event"), "source": .string(guid), "payload": frame["payload"],
             ])
             _ = await engine.kernel.send(AgentId(target), delivery)
+        case "announce":
+            // Peer advertises an OPAQUE directory-typing blob (role/owner_guid/exposes,
+            // …). The relay stores it verbatim (replace), never interprets it, and
+            // emits `peer_updated` only when it actually changed. Fire-and-forget.
+            let attrs: JSON = frame["attrs"].asObject != nil ? frame["attrs"] : .object([:])
+            if let (changed, lastSeen) = engine.peers.updateAttrs(guid, attrs), changed {
+                await engine.notifyDirectory(
+                    .object([
+                        "type": .string("peer_updated"),
+                        "guid": .string(guid),
+                        "status": .string(RelayRouterBundle.status(lastSeen, engine.config)),
+                        "attrs": attrs,
+                    ]))
+            }
         case "watch":
             if target == "relay" { engine.addDirectoryWatcher(guid) }
             conn.deliver(
                 .object(["type": .string("reply"), "id": id, "data": .object(["ok": .bool(true)])]))
         case "unwatch":
             if target == "relay" { engine.removeDirectoryWatcher(guid) }
+        case "keepalive":
+            // Non-mandatory liveness refresh: `channelRead` already touched
+            // `last_seen` for ANY inbound frame, so this verb just gives connectors
+            // an explicit no-op heartbeat (no reply, no side effect) — they need not
+            // abuse `unwatch` to stay green. Keepalive is optional: a peer can go
+            // silent and the eviction loop reaps it on the normal TTL.
+            break
         default:
             conn.deliver(
                 .object(["type": .string("error"), "id": id, "reason": .string("unknown_type")]))
         }
+    }
+
+    /// Route a binary codec frame peer→peer. The wire frame is
+    /// `[4B BE uint32 H | H-byte JSON header | M-byte raw body]` (the canvas
+    /// `io_bridge` codec): the header is a `{type:"send", target, payload, _binary_path}`
+    /// envelope with the one bytes value nulled, `_binary_path` naming where it lived.
+    /// We rewrite the header to `{type:"event", source:<guid>, payload, _binary_path}`
+    /// — `payload` keeps its key so `_binary_path` stays valid — and deliver the
+    /// re-framed `[len | header' | body]` to the target peer's socket as BINARY. Bulk
+    /// peer→peer bytes route DIRECTLY through the connection registry (the directory),
+    /// not the kernel; binary is never addressed to `relay`.
+    static func routeBinary(data: Data, guid: String, engine: RelayEngine) async {
+        // Decode + re-encode with the SHARED canvas codec (FantasticIoBridge.Codec) —
+        // the relay does not reimplement the framing, only the router's reframe.
+        guard let (header, body) = Codec.decodeBinaryFrame(data) else { return }
+        let target = header["target"].asString ?? ""
+        guard !target.isEmpty, target != "relay" else { return }
+        guard engine.mayForward(from: guid, to: target) else { return }
+        // A binary codec frame ALWAYS names its nulled bytes value via `_binary_path`;
+        // a frame without one is malformed → drop.
+        guard let bp = header["_binary_path"].asString else { return }
+        // Offline target → drop (the sender's stream sees no delivery, as for text).
+        guard let w = engine.peers.writer(target) else { return }
+
+        // `payload` keeps its key, so the path stays valid for the peer's decoder;
+        // the body rides through verbatim.
+        let outHeader: JSON = .object([
+            "type": .string("event"),
+            "source": .string(guid),
+            "payload": header["payload"],
+            "_binary_path": .string(bp),
+        ])
+        w.deliverBinary(Codec.encodeBinaryFrame(header: outHeader, body: body))
     }
 }
 
@@ -191,7 +279,7 @@ public final class RelayInbound: @unchecked Sendable {
                 let ok =
                     proto.contains("fantastic.relay.v1") && !guid.isEmpty
                     && rule.authorize(guid: guid, credential: cred)
-                    && !RelayPeers.shared.has(guid)
+                    && !engine.peers.has(guid)
                 guard ok else { return channel.eventLoop.makeSucceededFuture(nil) }
                 var h = HTTPHeaders()
                 h.add(name: "Sec-WebSocket-Protocol", value: "fantastic.relay.v1")

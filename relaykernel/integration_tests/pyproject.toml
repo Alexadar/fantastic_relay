@@ -1,0 +1,14 @@
+[project]
+name = "relay-integration-tests"
+version = "0.0.0"
+description = "Integration / isolation tests for the headless relay-kernel (standalone + container, interchangeable)"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "websockets>=13.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["."]

@@ -20,11 +20,13 @@ final class RelayKernelTests: XCTestCase {
         // Register a fake peer connection + its peer_proxy agent.
         final class FakeWriter: PeerWriter, @unchecked Sendable {
             var delivered: [JSON] = []
+            var deliveredBinary: [Data] = []
             func deliver(_ frame: JSON) { delivered.append(frame) }
+            func deliverBinary(_ data: Data) { deliveredBinary.append(data) }
             func shutdown() {}
         }
         let w = FakeWriter()
-        RelayPeers.shared.add("A", writer: w)
+        engine.peers.add("A", writer: w)
         _ = await engine.kernel.send(
             AgentId("core"),
             .object([
@@ -48,7 +50,7 @@ final class RelayKernelTests: XCTestCase {
         XCTAssertEqual(w.delivered.first?["hello"].asString, "world")
 
         engine.stop()
-        RelayPeers.shared.remove("A")
+        engine.peers.remove("A")
     }
 
     func testStatusThresholds() {

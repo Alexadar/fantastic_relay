@@ -8,7 +8,8 @@ import Foundation
 /// liveness live in `RelayPeers`, not the record, so `ephemeral` is fine.
 public struct PeerProxyBundle: AgentBundle {
     public let name = "peer_proxy"
-    public init() {}
+    let peers: RelayPeers  // this engine's registry (not global)
+    init(peers: RelayPeers) { self.peers = peers }
 
     public func handle(agentId: AgentId, payload: JSON, kernel: Kernel) async throws -> JSON? {
         switch payload["type"].asString ?? "" {
@@ -22,7 +23,7 @@ public struct PeerProxyBundle: AgentBundle {
             return .object(["ok": .bool(true)])
         default:
             // Routed peer→peer traffic: deliver the frame to this peer's socket.
-            guard let w = RelayPeers.shared.writer(agentId.value) else {
+            guard let w = peers.writer(agentId.value) else {
                 return .object([
                     "error": .string("peer \(agentId.value) offline"),
                     "reason": .string("no_connection"),
@@ -34,7 +35,7 @@ public struct PeerProxyBundle: AgentBundle {
     }
 
     public func onDelete(agentId: AgentId, kernel: Kernel) async throws {
-        RelayPeers.shared.writer(agentId.value)?.shutdown()
-        RelayPeers.shared.remove(agentId.value)
+        peers.writer(agentId.value)?.shutdown()
+        peers.remove(agentId.value)
     }
 }

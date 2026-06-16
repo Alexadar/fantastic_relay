@@ -13,7 +13,7 @@ extension RelayEngine {
     /// The directory (green/yellow/red), read straight from the connection
     /// registry — no kernel round-trip. Same data as `relay.list_peers`.
     public func listPeers() -> [PeerInfo] {
-        RelayPeers.shared.snapshot().map {
+        peers.snapshot().map {
             PeerInfo(
                 id: $0.guid,
                 status: RelayRouterBundle.status($0.lastSeen, config),
