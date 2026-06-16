@@ -87,3 +87,21 @@ def relays(launcher):
 
     for r in reversed(started):
         r.stop()
+
+
+@pytest.fixture
+def tunnel():
+    """The relay's PUBLIC URL + group token, read from the environment so the
+    hostname is never committed/stored in CI:
+
+        RELAY_TUNNEL_URL    e.g. wss://relay.example.com   (the named-tunnel host)
+        RELAY_TUNNEL_TOKEN  the group password (X-Fantastic-Auth)
+
+    Skips when `RELAY_TUNNEL_URL` is unset — so the suite stays green in CI (which
+    has no tunnel) and only the operator, who exports the var locally, exercises the
+    real wss path. Returns `(url, token)`.
+    """
+    url = os.environ.get("RELAY_TUNNEL_URL", "").strip()
+    if not url:
+        pytest.skip("RELAY_TUNNEL_URL unset — live-tunnel test only runs locally")
+    return url, os.environ.get("RELAY_TUNNEL_TOKEN", "")

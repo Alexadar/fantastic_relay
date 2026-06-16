@@ -82,9 +82,10 @@ class RelayWS:
 
 
 @asynccontextmanager
-async def connect(port: int, guid: str, *, cred: str):
-    """Connect a peer; raises on a refused upgrade (bad credential / dup GUID)."""
-    uri = f"ws://127.0.0.1:{port}/{guid}"
+async def connect_url(base_url: str, guid: str, *, cred: str, timeout: float = 5.0):
+    """Connect a peer to a relay at any base URL (`ws://127.0.0.1:port` for local,
+    `wss://relay.example.com` through a tunnel). Raises on a refused upgrade."""
+    uri = f"{base_url.rstrip('/')}/{guid}"
     try:
         ws = await asyncio.wait_for(
             websockets.connect(
@@ -92,7 +93,7 @@ async def connect(port: int, guid: str, *, cred: str):
                 subprotocols=[SUBPROTOCOL],
                 additional_headers={"X-Fantastic-Auth": cred},
             ),
-            timeout=5.0,
+            timeout=timeout,
         )
     except Exception as e:  # noqa: BLE001 — surface any handshake failure uniformly
         raise RelayWSError(str(e)) from e
@@ -100,6 +101,13 @@ async def connect(port: int, guid: str, *, cred: str):
         yield RelayWS(ws)
     finally:
         await ws.close()
+
+
+@asynccontextmanager
+async def connect(port: int, guid: str, *, cred: str):
+    """Connect a peer to a local relay on `127.0.0.1:<port>`."""
+    async with connect_url(f"ws://127.0.0.1:{port}", guid, cred=cred) as ws:
+        yield ws
 
 
 async def try_connect_fails(port: int, guid: str, *, cred: str) -> bool:
