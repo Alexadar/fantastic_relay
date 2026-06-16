@@ -218,3 +218,30 @@ struct DashboardView: View {
         }
     }
 }
+
+#if DEBUG
+    #Preview("Dashboard — running") {
+        DashboardView(
+            controller: .preview(
+                status: .running,
+                peers: RelayController.previewPeers,
+                logs: [
+                    "relay-kernel listening on 127.0.0.1:9443",
+                    "cloudflared tunnel 'my-relay' started",
+                    "peer macbook-pro joined",
+                    "peer linux-builder went yellow",
+                ])
+        )
+        .frame(width: 600, height: 940)
+    }
+
+    #Preview("Dashboard — stopped") {
+        DashboardView(controller: .preview(status: .stopped))
+            .frame(width: 600, height: 940)
+    }
+
+    #Preview("Dashboard — failed") {
+        DashboardView(controller: .preview(status: .failed("cloudflared: tunnel not found")))
+            .frame(width: 600, height: 940)
+    }
+#endif

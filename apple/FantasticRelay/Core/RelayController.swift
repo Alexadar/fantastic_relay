@@ -109,3 +109,35 @@ final class RelayController {
         if logLines.count > 200 { logLines.removeFirst(logLines.count - 200) }
     }
 }
+
+#if DEBUG
+    extension RelayController {
+        /// A controller pre-populated with sample state for SwiftUI previews. It never
+        /// starts the engine or the tunnel — purely for rendering the UI in Xcode.
+        static func preview(
+            status: Status = .running,
+            peers: [PeerInfo] = [],
+            logs: [String] = []
+        ) -> RelayController {
+            let c = RelayController()
+            c.status = status
+            c.peers = peers
+            c.logLines = logs
+            c.credential = "preview-group-password"
+            c.settings.listenPort = 9443
+            c.settings.tunnelName = "my-relay"
+            c.settings.publicURL = "wss://relay.example.com"
+            return c
+        }
+
+        /// A few sample peers across the green/yellow/red states.
+        static var previewPeers: [PeerInfo] {
+            [
+                PeerInfo(id: "macbook-pro", status: "green", lastSeen: 0, since: 0),
+                PeerInfo(id: "mac-studio", status: "green", lastSeen: 0, since: 0),
+                PeerInfo(id: "linux-builder", status: "yellow", lastSeen: 0, since: 0),
+                PeerInfo(id: "old-laptop", status: "red", lastSeen: 0, since: 0),
+            ]
+        }
+    }
+#endif

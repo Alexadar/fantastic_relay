@@ -87,3 +87,13 @@ func copyToPasteboard(_ s: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(s, forType: .string)
 }
+
+#if DEBUG
+    #Preview("Menu — running") {
+        MenuBarContent(controller: .preview(status: .running))
+    }
+
+    #Preview("Menu — stopped") {
+        MenuBarContent(controller: .preview(status: .stopped))
+    }
+#endif

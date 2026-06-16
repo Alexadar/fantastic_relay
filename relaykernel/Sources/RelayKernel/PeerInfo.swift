@@ -7,6 +7,13 @@ public struct PeerInfo: Sendable, Identifiable {
     public let status: String  // green | yellow | red
     public let lastSeen: Double
     public let since: Double
+
+    public init(id: String, status: String, lastSeen: Double, since: Double) {
+        self.id = id
+        self.status = status
+        self.lastSeen = lastSeen
+        self.since = since
+    }
 }
 
 extension RelayEngine {
