@@ -19,9 +19,11 @@
 # inside the build stage.
 set -eu
 
-HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)          # relaykernel/container
-RELAY=$(CDPATH= cd -- "$HERE/.." && pwd)                   # relaykernel
-CANVAS=$(CDPATH= cd -- "$RELAY/../../fantastic_canvas/swift" && pwd)
+# Empty CDPATH so `cd` never echoes the target dir into the captured value.
+unset CDPATH
+HERE=$(cd -- "$(dirname -- "$0")" && pwd)          # relaykernel/container
+RELAY=$(cd -- "$HERE/.." && pwd)                   # relaykernel
+CANVAS=$(cd -- "$RELAY/../../fantastic_canvas/swift" && pwd)
 TAG="${TAG:-relay:latest}"
 ARCH="${ARCH:-}"
 PUSH="${PUSH:-0}"
