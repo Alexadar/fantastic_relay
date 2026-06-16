@@ -13,6 +13,10 @@ dumb pipe. Built **on the canvas kernel as a library** (no vendored code).
   peer past the TTL is evicted. `list_peers` + a `watch relay` feed (live
   `peer_joined`/`left`/`evicted`/`peer_status`) drive an orchestration app's status
   buttons; an optional `keepalive` verb refreshes liveness.
+- **Directory typing** — peers may `announce` an **opaque** `attrs` blob (well-known
+  keys `role`, `owner_guid`, `exposes`); the relay stores + reflects it in
+  `list_peers` and a live `peer_updated` event but never interprets it. A no-op
+  `mayForward` ACL seam gates every peer→peer route (**reach ≠ control**).
 - **Auth** — a pluggable ingress boundary; **`password`** (shared group token) is
   the first rule, **`certificate`** is a left-open seam.
 - **Isolation by instance** — one relay-kernel **per user**; a standalone
@@ -66,8 +70,8 @@ cd relaykernel && uv run --project integration_tests pytest integration_tests   
 
 ## Status
 
-Alpha. The relay-kernel — directory + router (incl. binary pure-stream routing),
-health with `peer_status`/`keepalive`, password auth — is done and tested headless,
+Alpha. The relay-kernel — typed directory + router (incl. binary pure-stream
+routing), health with `peer_status`/`keepalive`, password auth — is done and tested headless,
 on **Linux** (container), and **across instances** (isolation, no interkernel leak).
 Client **relay-connector agents** now exist in
 [fantastic_canvas](https://github.com/Alexadar/fantastic_canvas) / the app;
