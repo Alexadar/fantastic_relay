@@ -7,10 +7,12 @@ dumb pipe. Built **on the canvas kernel as a library** (no vendored code).
 - **Directory** — every connected kernel is a `peer_proxy` agent; the flat agent
   registry *is* the directory. GUIDs are unique (duplicate → rejected).
 - **Router** — A reaches B by GUID through one in-kernel hop (`kernel.send`), so a
-  pair is **2 sockets + 1 hop**, not 3 sockets.
+  pair is **2 sockets + 1 hop**, not 3 sockets. Raw byte streams (`read_stream`
+  chunks) route as **binary** frames — pure streams, **no base64**.
 - **Health** — each peer's `last_seen` drives **green / yellow / red**; a silent
-  peer past the TTL is evicted. `list_peers` + `watch` feed an orchestration app's
-  status buttons.
+  peer past the TTL is evicted. `list_peers` + a `watch relay` feed (live
+  `peer_joined`/`left`/`evicted`/`peer_status`) drive an orchestration app's status
+  buttons; an optional `keepalive` verb refreshes liveness.
 - **Auth** — a pluggable ingress boundary; **`password`** (shared group token) is
   the first rule, **`certificate`** is a left-open seam.
 - **Isolation by instance** — one relay-kernel **per user**; a standalone
@@ -27,6 +29,8 @@ relaykernel/        Swift package (depends on ../../fantastic_canvas/swift as a 
   Sources/RelayKernel   engine + bundles (relay_router, peer_proxy) + NIO inbound + auth
   Sources/relayd        headless daemon
   Sources/relay-supervisor   standalone per-user spawner (alpha stub)
+  container/            Linux container — relayd built from relay + canvas source
+  integration_tests/    isolation + streaming tests, standalone ↔ container (RELAY_TARGET)
 apple/              the operator macOS app (menu-bar + dashboard) embedding RelayKernel
 ```
 
@@ -52,16 +56,22 @@ Wire protocol + status model: [`CONTRACT.md`](CONTRACT.md).
 ## Build & test
 
 ```sh
-cd relaykernel && swift build && swift test    # engine, NIO surface, auth, routing, directory, eviction
+cd relaykernel && swift build && swift test    # engine, NIO, auth, routing, directory, eviction, binary streams
 cd apple && make build                         # the operator app
+
+# Linux container + standalone↔container-interchangeable integration tests:
+sh relaykernel/container/build.sh                                  # build relay:latest (podman/docker)
+cd relaykernel && uv run --project integration_tests pytest integration_tests   # local; RELAY_TARGET=container for the image
 ```
 
 ## Status
 
-Alpha. The relay-kernel (directory + router + health + password auth) is done and
-tested headless. Client **relay-connector agents** land next in
-[fantastic_canvas](https://github.com/Alexadar/fantastic_canvas) / the app — see
-`fantastic_canvas/tmp/relay_connector_agents.md`.
+Alpha. The relay-kernel — directory + router (incl. binary pure-stream routing),
+health with `peer_status`/`keepalive`, password auth — is done and tested headless,
+on **Linux** (container), and **across instances** (isolation, no interkernel leak).
+Client **relay-connector agents** now exist in
+[fantastic_canvas](https://github.com/Alexadar/fantastic_canvas) / the app;
+end-to-end pairing is being verified.
 
 ## License & trademark
 
