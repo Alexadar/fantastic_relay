@@ -147,6 +147,7 @@ final class WSPeerHandler: ChannelInboundHandler {
     /// The relay wire protocol (mirrors the canvas web_ws envelope):
     ///   client→relay: {type:"call"|"send", id?, target, payload} | {type:"watch"|"unwatch", target}
     ///                 | {type:"keepalive"} (optional liveness refresh, no reply)
+    ///                 | {type:"announce", target:"relay", attrs:{…}} (opaque directory typing)
     ///   relay→client: {type:"reply", id, data} | {type:"event", source, payload}
     /// `target:"relay"` hits the directory/router (reply correlated); any other
     /// target is a peer GUID → delivered to that peer's socket as an `event`.
@@ -161,19 +162,42 @@ final class WSPeerHandler: ChannelInboundHandler {
             if target == "relay" {
                 let reply = await engine.kernel.send(AgentId("relay"), frame["payload"])
                 conn.deliver(.object(["type": .string("reply"), "id": id, "data": reply]))
-            } else {
+            } else if engine.mayForward(from: guid, to: target) {
                 let delivery: JSON = .object([
                     "type": .string("event"), "source": .string(guid),
                     "payload": frame["payload"], "id": id,
                 ])
                 let r = await engine.kernel.send(AgentId(target), delivery)
                 conn.deliver(.object(["type": .string("reply"), "id": id, "data": r]))
+            } else {
+                conn.deliver(
+                    .object([
+                        "type": .string("reply"), "id": id,
+                        "data": .object([
+                            "error": .string("forward denied"), "reason": .string("acl_denied"),
+                        ]),
+                    ]))
             }
         case "send":
+            guard engine.mayForward(from: guid, to: target) else { break }
             let delivery: JSON = .object([
                 "type": .string("event"), "source": .string(guid), "payload": frame["payload"],
             ])
             _ = await engine.kernel.send(AgentId(target), delivery)
+        case "announce":
+            // Peer advertises an OPAQUE directory-typing blob (role/owner_guid/exposes,
+            // …). The relay stores it verbatim (replace), never interprets it, and
+            // emits `peer_updated` only when it actually changed. Fire-and-forget.
+            let attrs: JSON = frame["attrs"].asObject != nil ? frame["attrs"] : .object([:])
+            if let (changed, lastSeen) = engine.peers.updateAttrs(guid, attrs), changed {
+                await engine.notifyDirectory(
+                    .object([
+                        "type": .string("peer_updated"),
+                        "guid": .string(guid),
+                        "status": .string(RelayRouterBundle.status(lastSeen, engine.config)),
+                        "attrs": attrs,
+                    ]))
+            }
         case "watch":
             if target == "relay" { engine.addDirectoryWatcher(guid) }
             conn.deliver(
@@ -208,6 +232,7 @@ final class WSPeerHandler: ChannelInboundHandler {
         guard let (header, body) = Codec.decodeBinaryFrame(data) else { return }
         let target = header["target"].asString ?? ""
         guard !target.isEmpty, target != "relay" else { return }
+        guard engine.mayForward(from: guid, to: target) else { return }
         // A binary codec frame ALWAYS names its nulled bytes value via `_binary_path`;
         // a frame without one is malformed → drop.
         guard let bp = header["_binary_path"].asString else { return }

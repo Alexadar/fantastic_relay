@@ -55,11 +55,14 @@ public struct RelayRouterBundle: AgentBundle {
 
     public static func peerList(_ peers: RelayPeers, _ config: RelayConfig) -> [JSON] {
         peers.snapshot().map { p in
+            // guid/status/last_seen/since are relay-owned; `attrs` is the peer's
+            // opaque advertised blob (`{}` until it announces), reflected verbatim.
             .object([
                 "guid": .string(p.guid),
                 "status": .string(status(p.lastSeen, config)),
                 "last_seen": .double(p.lastSeen),
                 "since": .double(p.since),
+                "attrs": p.attrs,
             ])
         }
     }

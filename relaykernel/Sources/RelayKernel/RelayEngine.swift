@@ -70,6 +70,13 @@ public final class RelayEngine: @unchecked Sendable {
         inbound = nil
     }
 
+    /// ACL seam — the single choke point for "may peer `from` forward to peer `to`".
+    /// Every peer→peer route (call/send/binary) passes through here. No policy yet
+    /// (always allows); fill this in to gate cross-peer routing without touching the
+    /// router. Reach ≠ control: the directory says who-owns-what; this is where a
+    /// future "may X drive Y" rule lands.
+    public func mayForward(from: String, to: String) -> Bool { true }
+
     // ── Directory watch (live green/yellow/red feed for the orchestration app) ──
 
     func addDirectoryWatcher(_ guid: String) {

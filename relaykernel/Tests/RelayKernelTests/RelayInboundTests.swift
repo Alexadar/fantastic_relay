@@ -155,6 +155,71 @@ final class RelayInboundTests: XCTestCase {
         XCTAssertTrue(sawYellow, "expected a live peer_status yellow event for CAT")
     }
 
+    func testAnnounceDirectoryTyping() async throws {
+        let mgr = connect("MGR", cred: "secret")
+        let plain = connect("KRN", cred: "secret")  // never announces
+        defer {
+            mgr.cancel()
+            plain.cancel()
+        }
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        // Opaque typing blob — the relay stores it verbatim, doesn't interpret it.
+        try await send(
+            mgr,
+            [
+                "type": "announce", "target": "relay",
+                "attrs": [
+                    "role": "manager", "owner_guid": NSNull(), "exposes": ["stop", "restart"],
+                ],
+            ])
+        try await Task.sleep(nanoseconds: 250_000_000)  // fire-and-forget — let it store
+
+        try await send(
+            mgr, ["type": "call", "id": "1", "target": "relay", "payload": ["type": "list_peers"]])
+        let reply = try await recv(mgr)
+        let peers = ((reply["data"] as? [String: Any])?["peers"] as? [[String: Any]]) ?? []
+        var attrsByGuid: [String: [String: Any]] = [:]
+        for p in peers {
+            if let g = p["guid"] as? String {
+                attrsByGuid[g] = (p["attrs"] as? [String: Any]) ?? [:]
+            }
+        }
+        XCTAssertEqual(attrsByGuid["MGR"]?["role"] as? String, "manager")
+        XCTAssertEqual(attrsByGuid["MGR"]?["exposes"] as? [String], ["stop", "restart"])
+        // A peer that never announced reflects an empty attrs blob.
+        XCTAssertEqual(attrsByGuid["KRN"]?.isEmpty, true)
+    }
+
+    func testPeerUpdatedEvent() async throws {
+        let watcher = connect("OBS", cred: "secret")
+        defer { watcher.cancel() }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        try await send(watcher, ["type": "watch", "id": "w", "target": "relay"])
+        _ = try await recv(watcher)  // watch ack
+
+        let mgr = connect("M2", cred: "secret")
+        defer { mgr.cancel() }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        try await send(
+            mgr, ["type": "announce", "target": "relay", "attrs": ["role": "manager"]])
+
+        // The directory feed carries peer_updated {guid:M2, attrs:{role:manager}}.
+        var sawUpdate = false
+        for _ in 0..<12 {
+            let ev = try await recv(watcher, 4)
+            guard let payload = ev["payload"] as? [String: Any] else { continue }
+            if payload["type"] as? String == "peer_updated",
+                payload["guid"] as? String == "M2",
+                (payload["attrs"] as? [String: Any])?["role"] as? String == "manager"
+            {
+                sawUpdate = true
+                break
+            }
+        }
+        XCTAssertTrue(sawUpdate, "expected a peer_updated event for M2 with role=manager")
+    }
+
     func testBinaryStreamRouting() async throws {
         let a = connect("A", cred: "secret")
         let b = connect("B", cred: "secret")

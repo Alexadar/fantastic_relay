@@ -30,6 +30,7 @@ Client → relay:
 | `watch` | `target` | subscribe to a target's events (e.g. `relay`) |
 | `unwatch` | `target` | unsubscribe |
 | `keepalive` | — | optional liveness refresh; no reply, no side effect (see §4) |
+| `announce` | `attrs` | advertise an opaque directory-typing blob to `relay` (see §3); fire-and-forget |
 
 Relay → client:
 | type | fields | meaning |
@@ -62,17 +63,30 @@ relay uses `FantasticIoBridge.Codec` — it does not reimplement the framing.)
 
 ## 3. Directory (`relay`)
 
-`call` `relay` with `{type:"list_peers"}` → `{peers:[{guid,status,last_seen,since}]}`.
+`call` `relay` with `{type:"list_peers"}` → `{peers:[{guid,status,last_seen,since,attrs}]}`.
 
 - **`status`** ∈ `green` (seen within the keepalive window) | `yellow` (stale) |
   `red` (past the evict TTL, being reaped).
+- **`attrs`** is the peer's own **opaque** directory-typing blob — `{}` until it
+  `announce`s, then stored + reflected **verbatim** (the relay never interprets it).
+  Well-known keys (owned by the connector, not the relay): `role` (`manager`|`kernel`),
+  `owner_guid` (`null` = standalone), `exposes` (advertised control surface). Adding a
+  new key needs zero relay change. `guid`/`status`/`last_seen`/`since` are relay-owned.
+- **`announce`** — `{type:"announce", target:"relay", attrs:{…}}` replaces a peer's
+  `attrs` (fire-and-forget). Sent on connect + every reconnect (the relay drops
+  per-connection state on a drop). Changes emit `peer_updated`.
 - `watch` `relay` to receive live `{type:"event", source:"relay", payload:{type:
   "peer_joined"|"peer_left"|"peer_evicted", guid}}` — the orchestration app's
   green/yellow/red button feed.
 - The feed also carries `{type:"peer_status", guid, status}` when a peer crosses a
   green↔yellow↔red threshold (computed in the health/evict sweep), so the dots update
   live without re-polling `list_peers`. `peer_joined` conveys the initial green.
+- …and `{type:"peer_updated", guid, status, attrs}` when a peer's `attrs` change
+  (an `announce`), so typing updates surface live.
 - `call` `relay` `{type:"evict", guid}` force-disconnects a peer.
+- **Routing is gated by a no-op ACL seam** — every peer→peer forward passes a single
+  "may X forward to Y" choke point (`RelayEngine.mayForward`), currently always-allow;
+  the seam is where a future "may X drive Y" policy lands. Reach ≠ control.
 
 ## 4. Liveness
 

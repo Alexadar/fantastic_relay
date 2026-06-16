@@ -10,6 +10,8 @@ even when GUIDs collide across instances.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from helpers.ws import connect, try_connect_fails
@@ -28,6 +30,35 @@ async def test_single_relay_directory_and_auth(relays):
         assert peers[0]["status"] == "green"
 
     assert await try_connect_fails(r.port, "BADGE", cred="wrong-password")
+
+
+async def test_announce_directory_typing(relays):
+    """A peer `announce`s an opaque attrs blob → it surfaces in `list_peers` verbatim;
+    a peer that never announces shows `attrs:{}`. The relay stores, never interprets."""
+    (r,) = relays(1)
+
+    async with connect(r.port, "MGR", cred=r.token) as mgr, connect(
+        r.port, "KRN", cred=r.token
+    ) as _plain:
+        await mgr.send(
+            {
+                "type": "announce",
+                "target": "relay",
+                "attrs": {"role": "manager", "owner_guid": None, "exposes": ["stop", "restart"]},
+            }
+        )
+        # announce is fire-and-forget — poll list_peers until it reflects.
+        by: dict = {}
+        for _ in range(10):
+            peers = await mgr.list_peers()
+            by = {p["guid"]: p.get("attrs", {}) for p in peers}
+            if by.get("MGR", {}).get("role") == "manager":
+                break
+            await asyncio.sleep(0.2)
+
+        assert by.get("MGR", {}).get("role") == "manager"
+        assert by["MGR"]["exposes"] == ["stop", "restart"]
+        assert by.get("KRN", "MISSING") == {}  # connected but never announced → {}
 
 
 async def test_keepalive_no_reply(relays):
