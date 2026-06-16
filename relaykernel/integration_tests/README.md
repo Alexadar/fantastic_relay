@@ -29,6 +29,19 @@ RELAY_TARGET=container uv run --project integration_tests pytest integration_tes
 self-gating: local skips if `relayd` isn't built; container skips if no
 podman/docker or image is present.
 
+### Live tunnel (conditional)
+
+`test_tunnel.py` exercises the real cloudflared path end-to-end (auth + directory +
+A→B routing across the edge, bad-cred rejection). It is **skipped** unless
+`RELAY_TUNNEL_URL` is exported — so the hostname is never stored in the repo/CI; the
+operator supplies it locally:
+
+```sh
+# with relayd on its listen port AND `cloudflared tunnel run <name>` up
+RELAY_TUNNEL_URL=wss://relay.example.com RELAY_TUNNEL_TOKEN=<pw> \
+  uv run --project integration_tests pytest integration_tests/test_tunnel.py -v
+```
+
 ## What's covered
 
 | test | asserts |
@@ -40,3 +53,5 @@ podman/docker or image is present.
 | `test_targeted_routing_no_broadcast` | within one relay, A→B reaches only B; peer C hears nothing |
 | `test_binary_stream_routing` | a binary `[len\|header\|body]` codec frame routes A→B; raw body survives byte-for-byte (no base64) |
 | `test_binary_no_leak_on_guid_collision` | binary routing is per-instance isolated — colliding GUID across relays does not leak |
+| `test_keepalive_no_reply` | `keepalive` refreshes liveness silently — no reply/error, peer stays green |
+| `test_announce_directory_typing` | an `announce`d opaque `attrs` blob surfaces in `list_peers`; a non-announcer shows `attrs:{}` |
